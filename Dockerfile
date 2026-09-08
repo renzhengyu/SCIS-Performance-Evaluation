@@ -2,11 +2,14 @@
 FROM node:20-bullseye-slim AS builder
 WORKDIR /app
 
+# Use fast China npm mirror for Aliyun Shanghai
+RUN npm config set registry https://registry.npmmirror.com
+
 # Install build dependencies
 COPY package*.json ./
 COPY prisma ./prisma/
 
-RUN npm ci
+RUN npm install
 
 # Copy application files
 COPY . .
@@ -21,6 +24,10 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3000
+
+# Use Aliyun debian mirror for lightning-fast apt downloads in Shanghai
+RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
+    sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list
 
 # Install Chromium and Chinese fonts for clean 2-page PDF rendering
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -43,4 +50,5 @@ COPY --from=builder /app/prisma ./prisma
 
 EXPOSE 3000
 
-CMD ["npm", "run", "start"]
+# Automatically sync DB schema and seed initial super admin on startup, then start app
+CMD ["sh", "-c", "npx prisma db push && npx tsx prisma/seed.ts && npm run start"]
