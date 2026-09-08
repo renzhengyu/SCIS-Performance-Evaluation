@@ -1,3 +1,10 @@
 scis.me {
+    # OPTION A: If you uploaded purchased Aliyun SSL cert files to /opt/perf-eval/certs/:
+    # tls /etc/caddy/certs/scis.me.pem /etc/caddy/certs/scis.me.key
+
+    # OPTION B: Automatic SSL (Default)
+    # If the tls line above remains commented out, Caddy will automatically issue 
+    # and renew a free Let's Encrypt SSL certificate for scis.me on its own.
+
     reverse_proxy app:3000
 }
