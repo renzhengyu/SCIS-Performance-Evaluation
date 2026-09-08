@@ -1,0 +1,215 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  STAFF
+  SUPERVISOR
+  DEPT_HEAD
+  HR_ADMIN
+  SUPER_ADMIN
+}
+
+enum EvaluationStatus {
+  PHASE1_DRAFT
+  PHASE1_SUBMITTED
+  PHASE2_DRAFT
+  PHASE2_SUBMITTED
+  PHASE3_SELF_COMPLETED
+  COMPLETED
+}
+
+enum ItemType {
+  RESPONSIBILITY
+  SKILL
+}
+
+model User {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  name          String?
+  image         String?
+  role          Role           @default(STAFF)
+  staffProfile  StaffProfile?
+  auditLogs     AuditLog[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+model StaffProfile {
+  id                   String         @id @default(cuid())
+  userId               String         @unique
+  user                 User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employeeId           String?
+  fullName             String
+  email                String         @unique
+  campus               String         @default("Systemwide") // e.g. Systemwide, Hongqiao, Pudong
+  department           String         @default("General")
+  jobDescriptionId     String?
+  jobDescription       JobDescription? @relation(fields: [jobDescriptionId], references: [id])
+  
+  // Hierarchy
+  supervisorId         String?
+  supervisor           StaffProfile?  @relation("SupervisorToStaff", fields: [supervisorId], references: [id])
+  subordinates         StaffProfile[] @relation("SupervisorToStaff")
+
+  deptHeadId           String?
+  deptHead             StaffProfile?  @relation("DeptHeadToStaff", fields: [deptHeadId], references: [id])
+  deptSubordinates     StaffProfile[] @relation("DeptHeadToStaff")
+
+  // Evaluations
+  evaluations          Evaluation[]   @relation("StaffEvaluations")
+  supervisorEvaluations Evaluation[]  @relation("SupervisorEvaluations")
+  deptHeadEvaluations  Evaluation[]   @relation("DeptHeadEvaluations")
+
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+}
+
+model JobDescription {
+  id                 String         @id @default(cuid())
+  title              String
+  reportsTo          String
+  positionSummary    String         @db.Text
+  responsibilities   Json           // Array of string bullet points
+  skillsAttributes   Json           // Array of string bullet points
+  qualifications     Json           // Array of string bullet points
+  fixedFooterText    String         @db.Text
+  lastRevisedDate    DateTime       @default(now())
+  staffProfiles      StaffProfile[]
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+}
+
+model SchoolYear {
+  id                 String         @id @default(cuid())
+  code               String         @unique // e.g. "SY2627"
+  name               String         // e.g. "School Year 2026 - 2027"
+  startDate          DateTime       // e.g. 2026-07-01
+  endDate            DateTime       // e.g. 2027-06-30
+  isCurrent          Boolean        @default(false)
+
+  // Phase 1: Responsibility, goal, and score setting (Sep/Oct, ~1-2 weeks)
+  phase1StartDate    DateTime
+  phase1EndDate      DateTime
+
+  // Phase 2: Mid-year review (Jan, ~1-2 weeks)
+  phase2StartDate    DateTime
+  phase2EndDate      DateTime
+
+  // Phase 3: Final Review and Submission (April)
+  phase3StartDate    DateTime
+  phase3EndDate      DateTime
+
+  evaluations        Evaluation[]
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+}
+
+model Evaluation {
+  id                         String            @id @default(cuid())
+  schoolYearId               String
+  schoolYear                 SchoolYear        @relation(fields: [schoolYearId], references: [id])
+  
+  staffProfileId             String
+  staffProfile               StaffProfile      @relation("StaffEvaluations", fields: [staffProfileId], references: [id], onDelete: Cascade)
+  
+  supervisorId               String?
+  supervisor                 StaffProfile?     @relation("SupervisorEvaluations", fields: [supervisorId], references: [id])
+  
+  deptHeadId                 String?
+  deptHead                   StaffProfile?     @relation("DeptHeadEvaluations", fields: [deptHeadId], references: [id])
+  
+  // Snapshots for historical integrity
+  staffNameSnapshot          String
+  jobTitleSnapshot           String
+  campusSnapshot             String
+  departmentSnapshot         String
+  
+  status                     EvaluationStatus  @default(PHASE1_DRAFT)
+
+  // Section C: Development
+  devRequestEmployee         String?           @db.Text
+  devRequestSupervisor       String?           @db.Text
+  otherCommentsEmployee      String?           @db.Text
+  otherCommentsSupervisor    String?           @db.Text
+
+  // Section E: Mid Year Review Comments
+  midYearCommentsEmployee    String?           @db.Text
+  midYearCommentsSupervisor  String?           @db.Text
+
+  // Section F: End of Year Review Comments
+  finalCommentsEmployee      String?           @db.Text
+  finalCommentsSupervisor    String?           @db.Text
+
+  // Calculated Scores
+  totalScorePartASelf        Int?              @default(0)
+  totalScorePartASupervisor  Int?              @default(0)
+  totalScorePartBSelf        Int?              @default(0)
+  totalScorePartBSupervisor  Int?              @default(0)
+  totalScoreSelf             Int?              @default(0)
+  totalScoreSupervisor       Int?              @default(0)
+  assessmentGrade            String?           // 'A' | 'B' | 'C' | 'D' | 'E'
+
+  // Digital acknowledgment / submission tracking
+  submittedPhase1At          DateTime?
+  submittedPhase2At          DateTime?
+  submittedPhase3SelfAt      DateTime?
+  completedAt                DateTime?
+
+  items                      EvaluationItem[]
+  goals                      EvaluationGoal[]
+  createdAt                  DateTime          @default(now())
+  updatedAt                  DateTime          @updatedAt
+}
+
+model EvaluationItem {
+  id               String      @id @default(cuid())
+  evaluationId     String
+  evaluation       Evaluation  @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  itemType         ItemType    // RESPONSIBILITY or SKILL
+  orderIndex       Int         @default(0)
+  title            String      @db.Text
+  weight           Int         // e.g. 1-20 for responsibility, exactly 5 for skill
+  scoreSelf        Int?
+  scoreSupervisor  Int?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+}
+
+model EvaluationGoal {
+  id            String      @id @default(cuid())
+  evaluationId  String
+  evaluation    Evaluation  @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  goalIndex     Int         // 1, 2, or 3
+  description   String      @db.Text
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+model AuditLog {
+  id          String      @id @default(cuid())
+  userId      String?
+  user        User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userEmail   String?
+  userName    String?
+  action      String      // e.g. "CREATE_JD", "UPDATE_WEIGHTS", "SUBMIT_PHASE1", etc.
+  entityType  String      // "JobDescription", "StaffProfile", "Evaluation", "SystemConfig"
+  entityId    String
+  diffData    Json?       // JSON object containing previous and updated values
+  ipAddress   String?
+  createdAt   DateTime    @default(now())
+}
+
+model SystemConfig {
+  id                  String      @id @default("singleton")
+  isSimulationMode    Boolean     @default(false)
+  simulatedDate       DateTime?
+  activeSchoolYearId  String?
+  updatedAt           DateTime    @updatedAt
+}
