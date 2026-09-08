@@ -1,5 +1,5 @@
 # Stage 1: Build Next.js app
-FROM node:20-bullseye-slim AS builder
+FROM node:20-bookworm-slim AS builder
 WORKDIR /app
 
 # Use fast China npm mirror for Aliyun Shanghai
@@ -19,18 +19,23 @@ RUN npx prisma generate
 RUN npm run build
 
 # Stage 2: Production runner with Headless Chrome & Chinese Fonts for Puppeteer
-FROM node:20-bullseye-slim AS runner
+FROM node:20-bookworm-slim AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3000
 
-# Use Aliyun debian mirror for lightning-fast apt downloads in Shanghai
-RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
-    sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list
+# Configure Aliyun mirrors for Debian Bookworm (Debian 12)
+RUN if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+      sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources; \
+    fi; \
+    if [ -f /etc/apt/sources.list ]; then \
+      sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list; \
+      sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list; \
+    fi
 
-# Install Chromium and Chinese fonts for clean 2-page PDF rendering
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Install Chromium and Chinese fonts with Check-Valid-Until=false to avoid expiration issues
+RUN apt-get -o Acquire::Check-Valid-Until=false update && apt-get install -y --no-install-recommends \
     chromium \
     fonts-wqy-zenhei \
     fonts-wqy-microhei \
