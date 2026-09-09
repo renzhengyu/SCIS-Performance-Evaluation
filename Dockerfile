@@ -57,4 +57,4 @@ COPY --from=builder /app/prisma ./prisma
 EXPOSE 3000
 
 # Automatically sync DB schema and seed initial super admin on startup, then start app
-CMD ["sh", "-c", "npx prisma db push && npx tsx prisma/seed.ts && npm run start"]
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss && npx tsx prisma/seed.ts && npm run start"]
