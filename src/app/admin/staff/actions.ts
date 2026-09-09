@@ -135,3 +135,63 @@ export async function createStaffProfileAction(payload: {
   revalidatePath('/admin/staff');
   return { success: true, id: profile.id };
 }
+
+export async function deleteStaffProfileAction(profileId: string) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) throw new Error('Unauthorized');
+
+  const userRole = (session.user as any).role;
+  if (userRole !== 'SUPER_ADMIN' && userRole !== 'HR_ADMIN') {
+    throw new Error('Forbidden: HR or Super Admin required');
+  }
+
+  const profile = await prisma.staffProfile.findUnique({
+    where: { id: profileId },
+    include: { user: true },
+  });
+  if (!profile) throw new Error('Staff profile not found');
+
+  if (profile.email.toLowerCase() === session.user.email.toLowerCase()) {
+    throw new Error('You cannot delete your own account.');
+  }
+
+  if (
+    profile.email.toLowerCase() ===
+    (process.env.INITIAL_SUPER_ADMIN_EMAIL || 'zren@scis-china.org').toLowerCase()
+  ) {
+    throw new Error('Cannot delete the root super administrator account.');
+  }
+
+  // Record audit log before deletion
+  await logAudit({
+    userId: (session.user as any).id,
+    userEmail: session.user.email,
+    userName: (session.user as any).fullName || session.user.name,
+    action: 'STAFF_PROFILE_DELETED',
+    entityType: 'StaffProfile',
+    entityId: profileId,
+    diffData: {
+      fullName: profile.fullName,
+      email: profile.email,
+      department: profile.department,
+      campus: profile.campus,
+    },
+  });
+
+  // Delete staff profile
+  await prisma.staffProfile.delete({
+    where: { id: profileId },
+  });
+
+  // Also delete associated User account if exists
+  if (profile.userId) {
+    await prisma.user
+      .delete({
+        where: { id: profile.userId },
+      })
+      .catch(() => null);
+  }
+
+  revalidatePath('/admin/staff');
+  return { success: true };
+}

@@ -15,6 +15,8 @@ import {
   Activity,
 } from 'lucide-react';
 
+import StopImpersonateBanner from './StopImpersonateBanner';
+
 interface NavbarProps {
   phaseInfo?: {
     phase: 1 | 2 | 3 | null;
@@ -23,9 +25,14 @@ interface NavbarProps {
     effectiveDate: string;
     isSimulationMode: boolean;
   };
+  impersonationInfo?: {
+    targetName: string;
+    targetEmail: string;
+    realUserName: string;
+  } | null;
 }
 
-export default function Navbar({ phaseInfo }: NavbarProps) {
+export default function Navbar({ phaseInfo, impersonationInfo }: NavbarProps) {
   const { data: session } = useSession();
   const pathname = usePathname();
 
@@ -45,6 +52,14 @@ export default function Navbar({ phaseInfo }: NavbarProps) {
 
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
+      {/* Impersonation Warning Banner */}
+      {impersonationInfo && (
+        <StopImpersonateBanner
+          targetName={impersonationInfo.targetName}
+          targetEmail={impersonationInfo.targetEmail}
+          realUserName={impersonationInfo.realUserName}
+        />
+      )}
       {/* Simulation Warning Banner */}
       {phaseInfo?.isSimulationMode && (
         <div className="bg-purple-700 text-white px-4 py-1.5 text-xs font-medium flex items-center justify-between shadow-inner">

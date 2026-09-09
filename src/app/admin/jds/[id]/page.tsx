@@ -21,16 +21,38 @@ export default async function EditJobDescriptionPage({
       staffProfiles: {
         select: { id: true, fullName: true, email: true, department: true, campus: true },
       },
+      reportsToJd: {
+        select: { id: true, title: true },
+      },
     },
   });
 
   if (!jd) notFound();
 
+  // All other JDs for the "Reports To" dropdown
+  const allOtherJds = await prisma.jobDescription.findMany({
+    where: { NOT: { id } },
+    select: { id: true, title: true },
+    orderBy: { title: 'asc' },
+  });
+
+  const config = await prisma.systemConfig.findUnique({
+    where: { id: 'singleton' },
+  });
+
+  const globalFooterText =
+    config?.standardJdFooterText ||
+    'Shanghai Community International School is committed to safeguarding and promoting the welfare of children. All employees must pass comprehensive criminal record checks.';
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       <Navbar />
       <main className="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        <JDEditorClient initialData={jd} />
+        <JDEditorClient
+          initialData={jd}
+          allOtherJds={allOtherJds}
+          globalFooterText={globalFooterText}
+        />
 
         {/* List assigned staff */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">

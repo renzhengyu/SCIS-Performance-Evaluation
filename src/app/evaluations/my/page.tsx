@@ -5,26 +5,17 @@ import { prisma } from '@/lib/db';
 import { getActiveSchoolYearWithPhase } from '@/lib/date-service';
 import { ItemType } from '@prisma/client';
 
+import { getEffectiveSessionUser } from '@/lib/impersonate-actions';
+
 export default async function MyEvaluationRedirect() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) {
+  const effectiveSession = await getEffectiveSessionUser();
+  if (!effectiveSession?.user?.email) {
     redirect('/auth/signin');
   }
 
-  const user = await prisma.user.findUnique({
-    where: { email: session.user.email.toLowerCase() },
-    include: {
-      staffProfile: {
-        include: {
-          jobDescription: true,
-          supervisor: true,
-          deptHead: true,
-        },
-      },
-    },
-  });
+  const staffProfile = effectiveSession.staffProfile;
 
-  if (!user?.staffProfile) {
+  if (!staffProfile) {
     redirect('/dashboard');
   }
 
@@ -36,7 +27,7 @@ export default async function MyEvaluationRedirect() {
   // Find existing evaluation
   let evaluation = await prisma.evaluation.findFirst({
     where: {
-      staffProfileId: user.staffProfile.id,
+      staffProfileId: staffProfile.id,
       schoolYearId: schoolYear.id,
     },
   });
@@ -46,13 +37,13 @@ export default async function MyEvaluationRedirect() {
     evaluation = await prisma.evaluation.create({
       data: {
         schoolYearId: schoolYear.id,
-        staffProfileId: user.staffProfile.id,
-        supervisorId: user.staffProfile.supervisorId,
-        deptHeadId: user.staffProfile.deptHeadId,
-        staffNameSnapshot: user.staffProfile.fullName,
-        jobTitleSnapshot: user.staffProfile.jobDescription?.title || 'Staff Member',
-        campusSnapshot: user.staffProfile.campus,
-        departmentSnapshot: user.staffProfile.department,
+        staffProfileId: staffProfile.id,
+        supervisorId: staffProfile.supervisorId,
+        deptHeadId: staffProfile.deptHeadId,
+        staffNameSnapshot: staffProfile.fullName,
+        jobTitleSnapshot: staffProfile.jobDescription?.title || 'Staff Member',
+        campusSnapshot: staffProfile.campus,
+        departmentSnapshot: staffProfile.department,
         items: {
           create: [
             {

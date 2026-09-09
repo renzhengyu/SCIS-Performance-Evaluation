@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db';
 import Navbar from '@/components/Navbar';
 import Link from 'next/link';
 import { FileText, Plus, Users, Calendar, ArrowRight } from 'lucide-react';
+import GlobalFooterEditorModal from './GlobalFooterEditorModal';
 
 export default async function JobDescriptionsAdminPage() {
   const session = await getServerSession(authOptions);
@@ -17,12 +18,23 @@ export default async function JobDescriptionsAdminPage() {
 
   const jds = await prisma.jobDescription.findMany({
     include: {
+      reportsToJd: {
+        select: { id: true, title: true },
+      },
       _count: {
         select: { staffProfiles: true },
       },
     },
     orderBy: { title: 'asc' },
   });
+
+  const config = await prisma.systemConfig.findUnique({
+    where: { id: 'singleton' },
+  });
+
+  const globalFooterText =
+    config?.standardJdFooterText ||
+    'Shanghai Community International School is committed to safeguarding and promoting the welfare of children. All employees must pass comprehensive criminal record checks.';
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -43,13 +55,17 @@ export default async function JobDescriptionsAdminPage() {
             </p>
           </div>
 
-          <Link
-            href="/admin/jds/new"
-            className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 rounded-lg shadow transition"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Create New JD</span>
-          </Link>
+          <div className="flex items-center gap-3">
+            <GlobalFooterEditorModal initialFooterText={globalFooterText} />
+
+            <Link
+              href="/admin/jds/new"
+              className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 rounded-lg shadow transition"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Create New JD</span>
+            </Link>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -75,7 +91,10 @@ export default async function JobDescriptionsAdminPage() {
                   </div>
 
                   <p className="text-xs text-slate-500">
-                    Reports to: <span className="font-semibold text-slate-700">{jd.reportsTo}</span>
+                    Reports to:{' '}
+                    <span className="font-semibold text-slate-700">
+                      {jd.reportsToJd?.title || jd.reportsTo || 'None / Head of School'}
+                    </span>
                   </p>
 
                   <p className="text-xs text-slate-600 line-clamp-3 leading-relaxed">

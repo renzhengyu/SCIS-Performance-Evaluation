@@ -1,9 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { updateStaffProfileAction, createStaffProfileAction } from './actions';
-import { Users, UserPlus, Edit, Search, CheckCircle2, Shield, X } from 'lucide-react';
+import {
+  updateStaffProfileAction,
+  createStaffProfileAction,
+  deleteStaffProfileAction,
+} from './actions';
+import { Users, UserPlus, Edit, Search, CheckCircle2, Shield, X, Trash2 } from 'lucide-react';
 import { Role } from '@prisma/client';
+import ImpersonateButton from '@/components/ImpersonateButton';
+import { useRouter } from 'next/navigation';
 
 interface StaffDirectoryClientProps {
   staffList: any[];
@@ -18,10 +24,12 @@ export default function StaffDirectoryClient({
   allSupervisors,
   allDeptHeads,
 }: StaffDirectoryClientProps) {
+  const router = useRouter();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStaff, setSelectedStaff] = useState<any | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Form state
   const [fullName, setFullName] = useState('');
@@ -87,10 +95,31 @@ export default function StaffDirectoryClient({
       }
       setSelectedStaff(null);
       setIsCreating(false);
+      router.refresh();
     } catch (err: any) {
       alert(err.message || 'Error saving staff profile');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleDeleteStaff = async (staff: any) => {
+    const confirmed = confirm(
+      `Are you sure you want to permanently delete ${staff.fullName} (${staff.email})?\n\nThis will remove their staff profile and evaluation records.`
+    );
+    if (!confirmed) return;
+
+    try {
+      setDeletingId(staff.id);
+      await deleteStaffProfileAction(staff.id);
+      if (selectedStaff?.id === staff.id) {
+        setSelectedStaff(null);
+      }
+      router.refresh();
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete staff member');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -119,7 +148,7 @@ export default function StaffDirectoryClient({
         <button
           type="button"
           onClick={openCreateModal}
-          className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 rounded-lg shadow transition"
+          className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 rounded-lg shadow transition cursor-pointer"
         >
           <UserPlus className="w-4 h-4" />
           <span>Add Staff Member</span>
@@ -137,7 +166,7 @@ export default function StaffDirectoryClient({
               <th className="py-3 px-4">Reports To (Supervisor)</th>
               <th className="py-3 px-4">Dept Head</th>
               <th className="py-3 px-4">Campus / Dept</th>
-              <th className="py-3 px-4 text-right">Action</th>
+              <th className="py-3 px-4 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -170,13 +199,24 @@ export default function StaffDirectoryClient({
                 <td className="py-3 px-4 text-slate-500">
                   {staff.campus} &bull; {staff.department}
                 </td>
-                <td className="py-3 px-4 text-right">
+                <td className="py-3 px-4 text-right space-x-1.5 whitespace-nowrap">
+                  <ImpersonateButton staffId={staff.id} staffName={staff.fullName} />
                   <button
+                    type="button"
                     onClick={() => openEditModal(staff)}
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-blue-900 hover:text-blue-700 bg-blue-50 px-2.5 py-1 rounded border border-blue-200"
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-blue-900 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded border border-blue-200 transition cursor-pointer"
                   >
                     <Edit className="w-3.5 h-3.5" />
                     <span>Edit</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={deletingId === staff.id}
+                    onClick={() => handleDeleteStaff(staff)}
+                    title="Delete Staff Member"
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-rose-700 hover:text-rose-900 bg-rose-50 hover:bg-rose-100 px-2 py-1 rounded border border-rose-200 transition disabled:opacity-50 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </td>
               </tr>

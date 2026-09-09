@@ -6,26 +6,33 @@ import { getActiveSchoolYearWithPhase } from '@/lib/date-service';
 import Navbar from '@/components/Navbar';
 import Link from 'next/link';
 import { Users, FileText, Download, ArrowRight } from 'lucide-react';
+import ImpersonateButton from '@/components/ImpersonateButton';
+import { getEffectiveSessionUser } from '@/lib/impersonate-actions';
 
 export default async function DirectReportsPage() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) {
+  const effectiveSession = await getEffectiveSessionUser();
+  if (!effectiveSession?.user?.email) {
     redirect('/auth/signin');
   }
 
-  const user = await prisma.user.findUnique({
-    where: { email: session.user.email.toLowerCase() },
-    include: { staffProfile: true },
-  });
+  const user = effectiveSession.user as any;
+  const staffProfile = effectiveSession.staffProfile;
+  const impersonationInfo = effectiveSession.isImpersonating && effectiveSession.realUser
+    ? {
+        targetName: staffProfile?.fullName || user.name || user.email,
+        targetEmail: staffProfile?.email || user.email,
+        realUserName: effectiveSession.realUser.name || effectiveSession.realUser.email,
+      }
+    : null;
 
-  if (!user?.staffProfile) {
+  if (!staffProfile) {
     redirect('/dashboard');
   }
 
   const { schoolYear, phaseInfo } = await getActiveSchoolYearWithPhase();
 
   const reports = await prisma.staffProfile.findMany({
-    where: { supervisorId: user.staffProfile.id },
+    where: { supervisorId: staffProfile.id },
     include: {
       jobDescription: true,
       evaluations: {
@@ -39,6 +46,7 @@ export default async function DirectReportsPage() {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       <Navbar
+        impersonationInfo={impersonationInfo}
         phaseInfo={{
           phase: phaseInfo.phase,
           phaseName: phaseInfo.phaseName,
@@ -106,7 +114,8 @@ export default async function DirectReportsPage() {
                       <td className="py-4 px-4 text-center font-mono font-semibold text-slate-800">
                         {ev?.totalScoreSupervisor ?? ev?.totalScoreSelf ?? '--'} / 100
                       </td>
-                      <td className="py-4 px-4 text-right space-x-2">
+                      <td className="py-4 px-4 text-right space-x-2 whitespace-nowrap">
+                        <ImpersonateButton staffId={staff.id} staffName={staff.fullName} />
                         {ev ? (
                           <>
                             <Link

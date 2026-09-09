@@ -55,11 +55,11 @@ model StaffProfile {
   
   // Hierarchy
   supervisorId         String?
-  supervisor           StaffProfile?  @relation("SupervisorToStaff", fields: [supervisorId], references: [id])
+  supervisor           StaffProfile?  @relation("SupervisorToStaff", fields: [supervisorId], references: [id], onDelete: SetNull)
   subordinates         StaffProfile[] @relation("SupervisorToStaff")
 
   deptHeadId           String?
-  deptHead             StaffProfile?  @relation("DeptHeadToStaff", fields: [deptHeadId], references: [id])
+  deptHead             StaffProfile?  @relation("DeptHeadToStaff", fields: [deptHeadId], references: [id], onDelete: SetNull)
   deptSubordinates     StaffProfile[] @relation("DeptHeadToStaff")
 
   // Evaluations
@@ -72,18 +72,21 @@ model StaffProfile {
 }
 
 model JobDescription {
-  id                 String         @id @default(cuid())
-  title              String
-  reportsTo          String
-  positionSummary    String         @db.Text
-  responsibilities   Json           // Array of string bullet points
-  skillsAttributes   Json           // Array of string bullet points
-  qualifications     Json           // Array of string bullet points
-  fixedFooterText    String         @db.Text
-  lastRevisedDate    DateTime       @default(now())
+  id                 String          @id @default(cuid())
+  title              String          @unique
+  reportsToJdId      String?
+  reportsToJd        JobDescription? @relation("JdReportingLine", fields: [reportsToJdId], references: [id], onDelete: SetNull)
+  subordinateJds     JobDescription[] @relation("JdReportingLine")
+  reportsTo          String?         // Text cache or fallback
+  positionSummary    String          @db.Text
+  responsibilities   Json            // Array of string bullet points
+  skillsAttributes   Json            // Array of string bullet points
+  qualifications     Json            // Array of string bullet points
+  fixedFooterText    String?         @db.Text
+  lastRevisedDate    DateTime        @default(now())
   staffProfiles      StaffProfile[]
-  createdAt          DateTime       @default(now())
-  updatedAt          DateTime       @updatedAt
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
 }
 
 model SchoolYear {
@@ -120,10 +123,10 @@ model Evaluation {
   staffProfile               StaffProfile      @relation("StaffEvaluations", fields: [staffProfileId], references: [id], onDelete: Cascade)
   
   supervisorId               String?
-  supervisor                 StaffProfile?     @relation("SupervisorEvaluations", fields: [supervisorId], references: [id])
+  supervisor                 StaffProfile?     @relation("SupervisorEvaluations", fields: [supervisorId], references: [id], onDelete: SetNull)
   
   deptHeadId                 String?
-  deptHead                   StaffProfile?     @relation("DeptHeadEvaluations", fields: [deptHeadId], references: [id])
+  deptHead                   StaffProfile?     @relation("DeptHeadEvaluations", fields: [deptHeadId], references: [id], onDelete: SetNull)
   
   // Snapshots for historical integrity
   staffNameSnapshot          String
@@ -207,9 +210,10 @@ model AuditLog {
 }
 
 model SystemConfig {
-  id                  String      @id @default("singleton")
-  isSimulationMode    Boolean     @default(false)
-  simulatedDate       DateTime?
-  activeSchoolYearId  String?
-  updatedAt           DateTime    @updatedAt
+  id                    String      @id @default("singleton")
+  isSimulationMode      Boolean     @default(false)
+  simulatedDate         DateTime?
+  activeSchoolYearId    String?
+  standardJdFooterText  String      @default("Shanghai Community International School is committed to safeguarding and promoting the welfare of children. All employees must pass comprehensive criminal record checks.") @db.Text
+  updatedAt             DateTime    @updatedAt
 }

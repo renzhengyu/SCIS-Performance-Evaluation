@@ -18,29 +18,24 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import { calculateGrade } from '@/lib/scoring';
+import { getEffectiveSessionUser } from '@/lib/impersonate-actions';
 
 export default async function DashboardPage() {
-  const session = await getServerSession(authOptions);
+  const effectiveSession = await getEffectiveSessionUser();
 
-  if (!session?.user?.email) {
+  if (!effectiveSession?.user?.email) {
     redirect('/auth/signin');
   }
 
-  const email = session.user.email.toLowerCase();
-
-  // Fetch current user and profile
-  const user = await prisma.user.findUnique({
-    where: { email },
-    include: {
-      staffProfile: {
-        include: {
-          jobDescription: true,
-          supervisor: true,
-          deptHead: true,
-        },
-      },
-    },
-  });
+  const user = effectiveSession.user as any;
+  const staffProfile = effectiveSession.staffProfile;
+  const impersonationInfo = effectiveSession.isImpersonating && effectiveSession.realUser
+    ? {
+        targetName: staffProfile?.fullName || user.name || user.email,
+        targetEmail: staffProfile?.email || user.email,
+        realUserName: effectiveSession.realUser.name || effectiveSession.realUser.email,
+      }
+    : null;
 
   const { schoolYear, phaseInfo } = await getActiveSchoolYearWithPhase();
 
@@ -97,6 +92,7 @@ export default async function DashboardPage() {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       <Navbar
+        impersonationInfo={impersonationInfo}
         phaseInfo={{
           phase: phaseInfo.phase,
           phaseName: phaseInfo.phaseName,

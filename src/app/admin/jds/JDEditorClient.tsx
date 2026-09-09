@@ -3,17 +3,23 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { saveJobDescriptionAction } from './actions';
-import { Plus, Trash2, Save, ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { Plus, Trash2, Save, ArrowLeft, CheckCircle2, ShieldCheck, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 
 interface JDEditorClientProps {
   initialData?: any;
+  allOtherJds: { id: string; title: string }[];
+  globalFooterText: string;
 }
 
-export default function JDEditorClient({ initialData }: JDEditorClientProps) {
+export default function JDEditorClient({
+  initialData,
+  allOtherJds,
+  globalFooterText,
+}: JDEditorClientProps) {
   const router = useRouter();
   const [title, setTitle] = useState(initialData?.title || '');
-  const [reportsTo, setReportsTo] = useState(initialData?.reportsTo || '');
+  const [reportsToJdId, setReportsToJdId] = useState(initialData?.reportsToJdId || '');
   const [positionSummary, setPositionSummary] = useState(initialData?.positionSummary || '');
 
   const [responsibilities, setResponsibilities] = useState<string[]>(
@@ -34,12 +40,8 @@ export default function JDEditorClient({ initialData }: JDEditorClientProps) {
       : ['']
   );
 
-  const [fixedFooterText, setFixedFooterText] = useState(
-    initialData?.fixedFooterText ||
-      'Shanghai Community International School is committed to safeguarding and promoting the welfare of children. All employees must pass comprehensive criminal record checks.'
-  );
-
   const [isSaving, setIsSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   const handleListChange = (
@@ -65,33 +67,42 @@ export default function JDEditorClient({ initialData }: JDEditorClientProps) {
     setter((prev) => prev.filter((_, i) => i !== index));
   };
 
+  // Auto resize helper for textareas
+  const autoResize = (target: HTMLTextAreaElement | null) => {
+    if (!target) return;
+    target.style.height = 'auto';
+    target.style.height = `${Math.max(38, target.scrollHeight)}px`;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !reportsTo.trim()) {
-      alert('Please fill in Job Title and Reports To.');
+    if (!title.trim()) {
+      alert('Please fill in the Job Title.');
       return;
     }
 
     try {
       setIsSaving(true);
+      setErrorMessage(null);
       setSavedSuccess(false);
 
       const res = await saveJobDescriptionAction(initialData?.id || null, {
         title,
-        reportsTo,
+        reportsToJdId: reportsToJdId || null,
         positionSummary,
         responsibilities,
         skillsAttributes,
         qualifications,
-        fixedFooterText,
       });
 
       setSavedSuccess(true);
       if (!initialData?.id) {
         router.push(`/admin/jds/${res.id}`);
+      } else {
+        router.refresh();
       }
     } catch (err: any) {
-      alert(err.message || 'Failed to save job description');
+      setErrorMessage(err.message || 'Failed to save job description');
     } finally {
       setIsSaving(false);
     }
@@ -111,16 +122,23 @@ export default function JDEditorClient({ initialData }: JDEditorClientProps) {
         <button
           type="submit"
           disabled={isSaving}
-          className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 rounded-lg shadow transition disabled:opacity-50"
+          className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 rounded-lg shadow transition disabled:opacity-50 cursor-pointer"
         >
           <Save className="w-4 h-4" />
           <span>{isSaving ? 'Saving...' : 'Save Job Description'}</span>
         </button>
       </div>
 
+      {errorMessage && (
+        <div className="bg-rose-50 border border-rose-300 text-rose-800 px-4 py-3 rounded-lg text-xs font-semibold flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+          <span>{errorMessage}</span>
+        </div>
+      )}
+
       {savedSuccess && (
         <div className="bg-emerald-50 border border-emerald-300 text-emerald-800 px-4 py-2.5 rounded-lg text-xs font-semibold flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
           <span>Job Description saved successfully!</span>
         </div>
       )}
@@ -134,7 +152,7 @@ export default function JDEditorClient({ initialData }: JDEditorClientProps) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Job Title *
+              Job Title * (Must be Unique)
             </label>
             <input
               type="text"
@@ -142,22 +160,29 @@ export default function JDEditorClient({ initialData }: JDEditorClientProps) {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Apple Hardware Specialist"
-              className="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:ring-1 focus:ring-blue-500"
+              className="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:ring-1 focus:ring-blue-500 font-medium"
             />
           </div>
 
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Reports To *
+              Reports To (Supervisor Job Description)
             </label>
-            <input
-              type="text"
-              required
-              value={reportsTo}
-              onChange={(e) => setReportsTo(e.target.value)}
-              placeholder="e.g. Director of Technology and Innovation"
-              className="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:ring-1 focus:ring-blue-500"
-            />
+            <select
+              value={reportsToJdId}
+              onChange={(e) => setReportsToJdId(e.target.value)}
+              className="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:ring-1 focus:ring-blue-500 font-medium bg-white"
+            >
+              <option value="">-- None / Head of School / Top-Level --</option>
+              {allOtherJds.map((jd) => (
+                <option key={jd.id} value={jd.id}>
+                  {jd.title}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-slate-500 mt-1">
+              Select the supervisor's position from existing Job Descriptions.
+            </p>
           </div>
         </div>
 
@@ -168,9 +193,13 @@ export default function JDEditorClient({ initialData }: JDEditorClientProps) {
           <textarea
             rows={3}
             value={positionSummary}
-            onChange={(e) => setPositionSummary(e.target.value)}
+            ref={autoResize}
+            onChange={(e) => {
+              setPositionSummary(e.target.value);
+              autoResize(e.target);
+            }}
             placeholder="High-level purpose and scope of the role..."
-            className="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:ring-1 focus:ring-blue-500"
+            className="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:ring-1 focus:ring-blue-500 resize-y"
           />
         </div>
       </div>
@@ -189,30 +218,34 @@ export default function JDEditorClient({ initialData }: JDEditorClientProps) {
           <button
             type="button"
             onClick={() => addListItem(setResponsibilities)}
-            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-900 bg-blue-50 hover:bg-blue-100 rounded-lg transition"
+            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-900 bg-blue-50 hover:bg-blue-100 rounded-lg transition cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Add Duty</span>
           </button>
         </div>
 
-        <div className="space-y-2">
+        <div className="space-y-3">
           {responsibilities.map((item, idx) => (
-            <div key={idx} className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-400 w-6 text-center">
+            <div key={idx} className="flex items-start gap-2">
+              <span className="text-xs font-bold text-slate-400 w-6 text-center mt-2.5">
                 {idx + 1}.
               </span>
-              <input
-                type="text"
+              <textarea
+                rows={1}
                 value={item}
-                onChange={(e) => handleListChange(setResponsibilities, idx, e.target.value)}
-                placeholder="Enter responsibility bullet point..."
-                className="flex-1 text-xs border border-slate-300 rounded-lg p-2 focus:ring-1 focus:ring-blue-500"
+                ref={autoResize}
+                onChange={(e) => {
+                  handleListChange(setResponsibilities, idx, e.target.value);
+                  autoResize(e.target);
+                }}
+                placeholder="Enter responsibility bullet point (auto-expands for long descriptions)..."
+                className="flex-1 text-xs border border-slate-300 rounded-lg p-2 focus:ring-1 focus:ring-blue-500 resize-none leading-relaxed"
               />
               <button
                 type="button"
                 onClick={() => removeListItem(setResponsibilities, idx)}
-                className="p-2 text-slate-400 hover:text-rose-600 transition"
+                className="p-2 text-slate-400 hover:text-rose-600 transition mt-1 cursor-pointer"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -233,30 +266,34 @@ export default function JDEditorClient({ initialData }: JDEditorClientProps) {
           <button
             type="button"
             onClick={() => addListItem(setSkillsAttributes)}
-            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-900 bg-blue-50 hover:bg-blue-100 rounded-lg transition"
+            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-900 bg-blue-50 hover:bg-blue-100 rounded-lg transition cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Add Skill</span>
           </button>
         </div>
 
-        <div className="space-y-2">
+        <div className="space-y-3">
           {skillsAttributes.map((item, idx) => (
-            <div key={idx} className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-400 w-6 text-center">
+            <div key={idx} className="flex items-start gap-2">
+              <span className="text-xs font-bold text-slate-400 w-6 text-center mt-2.5">
                 &bull;
               </span>
-              <input
-                type="text"
+              <textarea
+                rows={1}
                 value={item}
-                onChange={(e) => handleListChange(setSkillsAttributes, idx, e.target.value)}
-                placeholder="e.g. Strong diagnostic skills for micro-soldering..."
-                className="flex-1 text-xs border border-slate-300 rounded-lg p-2 focus:ring-1 focus:ring-blue-500"
+                ref={autoResize}
+                onChange={(e) => {
+                  handleListChange(setSkillsAttributes, idx, e.target.value);
+                  autoResize(e.target);
+                }}
+                placeholder="e.g. Strong diagnostic and communication skills..."
+                className="flex-1 text-xs border border-slate-300 rounded-lg p-2 focus:ring-1 focus:ring-blue-500 resize-none leading-relaxed"
               />
               <button
                 type="button"
                 onClick={() => removeListItem(setSkillsAttributes, idx)}
-                className="p-2 text-slate-400 hover:text-rose-600 transition"
+                className="p-2 text-slate-400 hover:text-rose-600 transition mt-1 cursor-pointer"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -277,30 +314,34 @@ export default function JDEditorClient({ initialData }: JDEditorClientProps) {
           <button
             type="button"
             onClick={() => addListItem(setQualifications)}
-            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-900 bg-blue-50 hover:bg-blue-100 rounded-lg transition"
+            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-900 bg-blue-50 hover:bg-blue-100 rounded-lg transition cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Add Qualification</span>
           </button>
         </div>
 
-        <div className="space-y-2">
+        <div className="space-y-3">
           {qualifications.map((item, idx) => (
-            <div key={idx} className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-400 w-6 text-center">
+            <div key={idx} className="flex items-start gap-2">
+              <span className="text-xs font-bold text-slate-400 w-6 text-center mt-2.5">
                 &bull;
               </span>
-              <input
-                type="text"
+              <textarea
+                rows={1}
                 value={item}
-                onChange={(e) => handleListChange(setQualifications, idx, e.target.value)}
-                placeholder="e.g. Bachelor's in Computer Science..."
-                className="flex-1 text-xs border border-slate-300 rounded-lg p-2 focus:ring-1 focus:ring-blue-500"
+                ref={autoResize}
+                onChange={(e) => {
+                  handleListChange(setQualifications, idx, e.target.value);
+                  autoResize(e.target);
+                }}
+                placeholder="e.g. Bachelor's in Computer Science, Apple certification..."
+                className="flex-1 text-xs border border-slate-300 rounded-lg p-2 focus:ring-1 focus:ring-blue-500 resize-none leading-relaxed"
               />
               <button
                 type="button"
                 onClick={() => removeListItem(setQualifications, idx)}
-                className="p-2 text-slate-400 hover:text-rose-600 transition"
+                className="p-2 text-slate-400 hover:text-rose-600 transition mt-1 cursor-pointer"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -309,17 +350,18 @@ export default function JDEditorClient({ initialData }: JDEditorClientProps) {
         </div>
       </div>
 
-      {/* Fixed Footer Text */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-3">
-        <h2 className="text-sm font-bold uppercase tracking-wider text-slate-700">
-          Standard Policy Footer (Applicable to all SCIS JDs)
-        </h2>
-        <textarea
-          rows={2}
-          value={fixedFooterText}
-          onChange={(e) => setFixedFooterText(e.target.value)}
-          className="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:ring-1 focus:ring-blue-500"
-        />
+      {/* Centralized Standard Policy Footer (Read-Only Preview) */}
+      <div className="bg-slate-50 rounded-xl border border-slate-200 p-6 space-y-2">
+        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700">
+          <ShieldCheck className="w-4 h-4 text-emerald-600" />
+          <span>Global Standard Policy Footer (Managed Centrally)</span>
+        </div>
+        <p className="text-xs text-slate-500">
+          This policy statement automatically appears on all official SCIS Job Descriptions. It cannot be altered per JD to maintain schoolwide compliance.
+        </p>
+        <div className="bg-white p-3.5 rounded-lg border border-slate-200 text-xs text-slate-700 italic leading-relaxed">
+          "{globalFooterText}"
+        </div>
       </div>
     </form>
   );

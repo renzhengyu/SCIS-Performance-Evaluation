@@ -6,26 +6,32 @@ import { getActiveSchoolYearWithPhase } from '@/lib/date-service';
 import Navbar from '@/components/Navbar';
 import Link from 'next/link';
 import { Briefcase, Download, ArrowRight } from 'lucide-react';
+import ImpersonateButton from '@/components/ImpersonateButton';
+import { getEffectiveSessionUser } from '@/lib/impersonate-actions';
 
 export default async function DeptReviewsPage() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) {
+  const effectiveSession = await getEffectiveSessionUser();
+  if (!effectiveSession?.user?.email) {
     redirect('/auth/signin');
   }
 
-  const user = await prisma.user.findUnique({
-    where: { email: session.user.email.toLowerCase() },
-    include: { staffProfile: true },
-  });
+  const staffProfile = effectiveSession.staffProfile;
+  const impersonationInfo = effectiveSession.isImpersonating && effectiveSession.realUser
+    ? {
+        targetName: staffProfile?.fullName || effectiveSession.user.name || effectiveSession.user.email,
+        targetEmail: staffProfile?.email || effectiveSession.user.email,
+        realUserName: effectiveSession.realUser.name || effectiveSession.realUser.email,
+      }
+    : null;
 
-  if (!user?.staffProfile) {
+  if (!staffProfile) {
     redirect('/dashboard');
   }
 
   const { schoolYear, phaseInfo } = await getActiveSchoolYearWithPhase();
 
   const deptStaff = await prisma.staffProfile.findMany({
-    where: { deptHeadId: user.staffProfile.id },
+    where: { deptHeadId: staffProfile.id },
     include: {
       supervisor: true,
       jobDescription: true,
@@ -39,6 +45,7 @@ export default async function DeptReviewsPage() {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       <Navbar
+        impersonationInfo={impersonationInfo}
         phaseInfo={{
           phase: phaseInfo.phase,
           phaseName: phaseInfo.phaseName,
@@ -112,7 +119,8 @@ export default async function DeptReviewsPage() {
                           <span className="text-slate-400">--</span>
                         )}
                       </td>
-                      <td className="py-4 px-4 text-right space-x-2">
+                      <td className="py-4 px-4 text-right space-x-2 whitespace-nowrap">
+                        <ImpersonateButton staffId={staff.id} staffName={staff.fullName} />
                         {ev ? (
                           <>
                             <Link

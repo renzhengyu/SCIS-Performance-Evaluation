@@ -3,7 +3,8 @@ import { authOptions } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/db';
 import Navbar from '@/components/Navbar';
-import { ShieldCheck, Clock, User, FileText } from 'lucide-react';
+import { ShieldCheck } from 'lucide-react';
+import AuditLogViewerClient from './AuditLogViewerClient';
 
 export default async function AuditLogAdminPage() {
   const session = await getServerSession(authOptions);
@@ -15,7 +16,7 @@ export default async function AuditLogAdminPage() {
   }
 
   const logs = await prisma.auditLog.findMany({
-    take: 100,
+    take: 300,
     orderBy: { createdAt: 'desc' },
   });
 
@@ -33,55 +34,24 @@ export default async function AuditLogAdminPage() {
             System Audit Trail ({logs.length} events)
           </h1>
           <p className="text-sm text-slate-500 mt-1">
-            Complete, immutable log of modifications to Job Descriptions, staff assignments, evaluation forms, scores, and PDF downloads.
+            Complete, immutable log of modifications to Job Descriptions, staff assignments, evaluation forms, scores, impersonations, and PDF downloads.
           </p>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-          <table className="min-w-full divide-y divide-slate-200 text-left text-xs">
-            <thead>
-              <tr className="bg-slate-50 text-slate-700 font-bold uppercase tracking-wider">
-                <th className="py-3 px-4">Timestamp (CST)</th>
-                <th className="py-3 px-4">User</th>
-                <th className="py-3 px-4">Action</th>
-                <th className="py-3 px-4">Entity Type</th>
-                <th className="py-3 px-4">Details / Diff</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {logs.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="py-8 text-center text-slate-400">
-                    No audit records logged yet.
-                  </td>
-                </tr>
-              ) : (
-                logs.map((log) => (
-                  <tr key={log.id} className="hover:bg-slate-50/70">
-                    <td className="py-3 px-4 font-mono text-[11px] text-slate-500 whitespace-nowrap">
-                      {new Date(log.createdAt).toLocaleString()}
-                    </td>
-                    <td className="py-3 px-4 font-semibold text-slate-800">
-                      {log.userName || log.userEmail || 'System'}
-                      <div className="text-[10px] text-slate-400 font-normal">{log.userEmail}</div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-800 border border-slate-200">
-                        {log.action}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-slate-600 font-medium">
-                      {log.entityType}
-                    </td>
-                    <td className="py-3 px-4 font-mono text-[10px] text-slate-600 max-w-md truncate">
-                      {log.diffData ? JSON.stringify(log.diffData) : '--'}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        <AuditLogViewerClient
+          logs={logs.map((l) => ({
+            id: l.id,
+            userId: l.userId,
+            userEmail: l.userEmail,
+            userName: l.userName,
+            action: l.action,
+            entityType: l.entityType,
+            entityId: l.entityId,
+            diffData: l.diffData,
+            ipAddress: l.ipAddress,
+            createdAt: l.createdAt.toISOString(),
+          }))}
+        />
       </main>
     </div>
   );
