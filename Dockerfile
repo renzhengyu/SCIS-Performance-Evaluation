@@ -23,6 +23,7 @@ FROM node:20-bookworm-slim AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
+ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
 
 # Configure Aliyun mirrors for Debian Bookworm (Debian 12)
