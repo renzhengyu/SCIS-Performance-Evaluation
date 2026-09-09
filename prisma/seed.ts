@@ -74,8 +74,10 @@ async function main() {
   console.log('✓ Super Admin created: zren@scis-china.org');
 
   // 4. Seed Sample Job Description: Apple Hardware Specialist
-  const sampleJD = await prisma.jobDescription.create({
-    data: {
+  const sampleJD = await prisma.jobDescription.upsert({
+    where: { title: 'Apple Hardware Specialist' },
+    update: {},
+    create: {
       title: 'Apple Hardware Specialist',
       reportsTo: 'Director of Technology and Innovation',
       positionSummary:
