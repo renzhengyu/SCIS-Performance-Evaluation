@@ -43,13 +43,17 @@ export default async function StaffAdminPage() {
 
   const campuses: string[] =
     Array.isArray(config?.campusOptions) && (config.campusOptions as string[]).length > 0
-      ? (config.campusOptions as string[])
+      ? JSON.parse(JSON.stringify(config.campusOptions))
       : DEFAULT_CAMPUSES;
 
   const departments: string[] =
     Array.isArray(config?.departmentOptions) && (config.departmentOptions as string[]).length > 0
-      ? (config.departmentOptions as string[])
+      ? JSON.parse(JSON.stringify(config.departmentOptions))
       : DEFAULT_DEPARTMENTS;
+
+  const cleanStaffList = JSON.parse(JSON.stringify(staffList));
+  const cleanJDs = JSON.parse(JSON.stringify(allJDs));
+  const cleanStaffOptions = JSON.parse(JSON.stringify(allStaffOptions));
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -70,10 +74,10 @@ export default async function StaffAdminPage() {
         </div>
 
         <StaffDirectoryClient
-          staffList={staffList}
-          allJDs={allJDs}
-          allSupervisors={allStaffOptions}
-          allDeptHeads={allStaffOptions}
+          staffList={cleanStaffList}
+          allJDs={cleanJDs}
+          allSupervisors={cleanStaffOptions}
+          allDeptHeads={cleanStaffOptions}
           initialCampuses={campuses}
           initialDepartments={departments}
         />

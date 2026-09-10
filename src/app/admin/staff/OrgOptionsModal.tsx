@@ -87,7 +87,7 @@ export default function OrgOptionsModal({
         departments,
       });
 
-      if (res.success) {
+      if (res.success && res.campuses && res.departments) {
         setSuccessMessage('Campus and department options saved successfully!');
         if (onOptionsUpdated) {
           onOptionsUpdated(res.campuses, res.departments);
@@ -96,6 +96,8 @@ export default function OrgOptionsModal({
           setIsOpen(false);
           setSuccessMessage(null);
         }, 800);
+      } else {
+        setErrorMessage(res.error || 'Failed to save options.');
       }
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to save options.');
@@ -193,7 +195,7 @@ export default function OrgOptionsModal({
                   <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
                     {campuses.map((c, idx) => (
                       <div
-                        key={idx}
+                        key={`campus-${c}-${idx}`}
                         className="flex items-center justify-between bg-white px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-800 shadow-2xs"
                       >
                         <span className="font-medium">{c}</span>
@@ -240,7 +242,7 @@ export default function OrgOptionsModal({
                   <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
                     {departments.map((d, idx) => (
                       <div
-                        key={idx}
+                        key={`dept-${d}-${idx}`}
                         className="flex items-center justify-between bg-white px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-800 shadow-2xs"
                       >
                         <span className="font-medium">{d}</span>

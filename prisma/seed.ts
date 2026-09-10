@@ -6,6 +6,26 @@ async function main() {
   console.log('Seeding SCIS Staff Performance Evaluation System...');
 
   // 1. Initialize System Config
+  const defaultCampuses = [
+    'Systemwide',
+    'Hongqiao Campus',
+    'Hongqiao ECE',
+    'Pudong Campus',
+  ];
+  const defaultDepartments = [
+    'Technology and Innovation',
+    'Early Childhood Education (ECE)',
+    'Lower School / Primary',
+    'Upper School / Secondary',
+    'Student Support Services',
+    'Operations & Facilities',
+    'Human Resources',
+    'Finance & Business Office',
+    'Athletics & Activities',
+    'Admissions & Marketing',
+    'General Administration',
+  ];
+
   const config = await prisma.systemConfig.upsert({
     where: { id: 'singleton' },
     update: {},
@@ -13,27 +33,21 @@ async function main() {
       id: 'singleton',
       isSimulationMode: false,
       simulatedDate: null,
-      campusOptions: [
-        'Systemwide',
-        'Hongqiao Campus',
-        'Hongqiao ECE',
-        'Pudong Campus',
-      ],
-      departmentOptions: [
-        'Technology and Innovation',
-        'Early Childhood Education (ECE)',
-        'Lower School / Primary',
-        'Upper School / Secondary',
-        'Student Support Services',
-        'Operations & Facilities',
-        'Human Resources',
-        'Finance & Business Office',
-        'Athletics & Activities',
-        'Admissions & Marketing',
-        'General Administration',
-      ],
+      campusOptions: defaultCampuses,
+      departmentOptions: defaultDepartments,
     },
   });
+
+  // Ensure options are populated if singleton was created before this schema update
+  if (!config.campusOptions || !config.departmentOptions) {
+    await prisma.systemConfig.update({
+      where: { id: 'singleton' },
+      data: {
+        campusOptions: config.campusOptions || defaultCampuses,
+        departmentOptions: config.departmentOptions || defaultDepartments,
+      },
+    });
+  }
   console.log('✓ System config initialized.');
 
   // 2. Initialize School Year SY2627
