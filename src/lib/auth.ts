@@ -42,7 +42,7 @@ export const authOptions: NextAuthOptions = {
           user = await prisma.user.create({
             data: {
               email: normalizedEmail,
-              name: normalizedEmail.split('@')[0],
+              name: isSuper ? 'Zhengyu Ren' : normalizedEmail.split('@')[0],
               role: isSuper ? Role.SUPER_ADMIN : Role.STAFF,
             },
             include: { staffProfile: true },
@@ -52,10 +52,10 @@ export const authOptions: NextAuthOptions = {
           await prisma.staffProfile.create({
             data: {
               userId: user.id,
-              fullName: user.name || normalizedEmail.split('@')[0],
+              fullName: isSuper ? 'Zhengyu Ren' : (user.name || normalizedEmail.split('@')[0]),
               email: normalizedEmail,
               campus: 'Systemwide',
-              department: isSuper ? 'Administration' : 'General Staff',
+              department: isSuper ? 'Technology and Innovation' : 'General Staff',
             },
           });
         }
@@ -83,12 +83,12 @@ export const authOptions: NextAuthOptions = {
       const dbUser = await prisma.user.upsert({
         where: { email: normalizedEmail },
         update: {
-          name: user.name ?? undefined,
+          name: user.name ?? (isSuper ? 'Zhengyu Ren' : undefined),
           ...(isSuper ? { role: Role.SUPER_ADMIN } : {}),
         },
         create: {
           email: normalizedEmail,
-          name: user.name,
+          name: user.name || (isSuper ? 'Zhengyu Ren' : undefined),
           role: isSuper ? Role.SUPER_ADMIN : Role.STAFF,
         },
       });
@@ -102,10 +102,10 @@ export const authOptions: NextAuthOptions = {
         await prisma.staffProfile.create({
           data: {
             userId: dbUser.id,
-            fullName: user.name || normalizedEmail.split('@')[0],
+            fullName: isSuper ? (user.name || 'Zhengyu Ren') : (user.name || normalizedEmail.split('@')[0]),
             email: normalizedEmail,
             campus: 'Systemwide',
-            department: isSuper ? 'Administration' : 'General Staff',
+            department: isSuper ? 'Technology and Innovation' : 'General Staff',
           },
         });
       }

@@ -47,11 +47,12 @@ async function main() {
   const superAdminUser = await prisma.user.upsert({
     where: { email: 'zren@scis-china.org' },
     update: {
+      name: 'Zhengyu Ren',
       role: Role.SUPER_ADMIN,
     },
     create: {
       email: 'zren@scis-china.org',
-      name: 'Zren (Super Admin)',
+      name: 'Zhengyu Ren',
       role: Role.SUPER_ADMIN,
     },
   });
@@ -59,19 +60,19 @@ async function main() {
   await prisma.staffProfile.upsert({
     where: { email: 'zren@scis-china.org' },
     update: {
-      fullName: 'Zren Admin',
-      department: 'Administration',
+      fullName: 'Zhengyu Ren',
+      department: 'Technology and Innovation',
       campus: 'Systemwide',
     },
     create: {
       userId: superAdminUser.id,
-      fullName: 'Zren Admin',
+      fullName: 'Zhengyu Ren',
       email: 'zren@scis-china.org',
       campus: 'Systemwide',
-      department: 'Administration',
+      department: 'Technology and Innovation',
     },
   });
-  console.log('✓ Super Admin created: zren@scis-china.org');
+  console.log('✓ Super Admin created/updated: Zhengyu Ren (zren@scis-china.org)');
 
   // 4. Seed Sample Job Description: Apple Hardware Specialist
   const sampleJD = await prisma.jobDescription.upsert({

@@ -81,7 +81,7 @@ export default function SignInPage() {
               >
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="w-4 h-4 text-purple-600" />
-                  <span className="font-semibold">Super Admin / HR</span>
+                  <span className="font-semibold">Zhengyu Ren (Super Admin)</span>
                 </div>
                 <span className="text-slate-500 font-mono text-[11px]">zren@scis-china.org</span>
               </button>

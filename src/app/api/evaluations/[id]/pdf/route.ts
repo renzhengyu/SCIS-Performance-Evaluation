@@ -51,41 +51,48 @@ export async function GET(
       timeStyle: 'medium',
     }) + ' CST';
 
-    // Build URL to the internal print page
-    const host = request.headers.get('host') || 'localhost:3000';
-    const protocol = host.includes('localhost') ? 'http' : 'https';
-    const printUrl = `${protocol}://${host}/evaluations/${id}/print?timestamp=${encodeURIComponent(
+    // Puppeteer navigates internally to the local Next.js server on 127.0.0.1
+    // This avoids egress loopback timeouts and firewall hairpinning issues inside Docker.
+    const port = process.env.PORT || '3000';
+    const printUrl = `http://127.0.0.1:${port}/evaluations/${id}/print?timestamp=${encodeURIComponent(
       formattedTimestamp
     )}&downloader=${encodeURIComponent(downloaderName)}`;
 
     // Launch Puppeteer to generate pixel-perfect A4 PDF
+    const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
     const browser = await puppeteer.launch({
       headless: true,
+      executablePath,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-gpu',
+        '--font-render-hinting=medium',
       ],
     });
 
-    const page = await browser.newPage();
-    await page.setViewport({ width: 1200, height: 1600, deviceScaleFactor: 2 });
-    await page.goto(printUrl, { waitUntil: 'networkidle0', timeout: 30000 });
+    let pdfBuffer: Uint8Array;
+    try {
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1200, height: 1600, deviceScaleFactor: 2 });
+      await page.goto(printUrl, { waitUntil: 'networkidle0', timeout: 30000 });
+      await page.evaluateHandle('document.fonts.ready');
 
-    const pdfBuffer = await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      margin: {
-        top: '8mm',
-        bottom: '8mm',
-        left: '10mm',
-        right: '10mm',
-      },
-      preferCSSPageSize: true,
-    });
-
-    await browser.close();
+      pdfBuffer = await page.pdf({
+        format: 'A4',
+        printBackground: true,
+        margin: {
+          top: '8mm',
+          bottom: '8mm',
+          left: '10mm',
+          right: '10mm',
+        },
+        preferCSSPageSize: true,
+      });
+    } finally {
+      await browser.close();
+    }
 
     const sanitizedStaffName = evaluation.staffNameSnapshot.replace(/\s+/g, '_');
     const filename = `SCIS_Evaluation_${sanitizedStaffName}_${evaluation.schoolYear.code}.pdf`;
