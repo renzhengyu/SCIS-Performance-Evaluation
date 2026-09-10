@@ -47,6 +47,7 @@ export default function StaffDirectoryClient({
   const handleOptionsUpdated = (newCampuses: string[], newDepts: string[]) => {
     setCampuses(newCampuses);
     setDepartments(newDepts);
+    router.refresh();
   };
 
   // Form state

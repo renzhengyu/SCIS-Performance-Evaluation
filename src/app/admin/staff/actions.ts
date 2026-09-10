@@ -234,6 +234,11 @@ export async function getOrgOptionsAction(): Promise<{
 export async function updateOrgOptionsAction(payload: {
   campuses: string[];
   departments: string[];
+  renames?: {
+    type: 'campus' | 'department';
+    oldName: string;
+    newName: string;
+  }[];
 }): Promise<{
   success: boolean;
   campuses?: string[];
@@ -278,6 +283,25 @@ export async function updateOrgOptionsAction(payload: {
       },
     });
 
+    // If any items were renamed, update staff profiles who had the old name
+    if (payload.renames && payload.renames.length > 0) {
+      for (const r of payload.renames) {
+        if (r.oldName && r.newName && r.oldName !== r.newName) {
+          if (r.type === 'campus') {
+            await prisma.staffProfile.updateMany({
+              where: { campus: r.oldName },
+              data: { campus: r.newName },
+            });
+          } else if (r.type === 'department') {
+            await prisma.staffProfile.updateMany({
+              where: { department: r.oldName },
+              data: { department: r.newName },
+            });
+          }
+        }
+      }
+    }
+
     await logAudit({
       userId: (session.user as any).id,
       userEmail: session.user.email,
@@ -288,6 +312,7 @@ export async function updateOrgOptionsAction(payload: {
       diffData: {
         campusCount: cleanCampuses.length,
         departmentCount: cleanDepartments.length,
+        renamesCount: payload.renames?.length || 0,
       },
     });
 
