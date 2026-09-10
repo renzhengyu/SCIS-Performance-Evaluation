@@ -165,6 +165,12 @@ model Evaluation {
   submittedPhase3SelfAt      DateTime?
   completedAt                DateTime?
 
+  // Form-Level Lock by Supervisor
+  isFormLocked               Boolean           @default(false)
+  lockedByName               String?
+  lockedByEmail              String?
+  lockedAt                   DateTime?
+
   items                      EvaluationItem[]
   goals                      EvaluationGoal[]
   createdAt                  DateTime          @default(now())

@@ -17,7 +17,13 @@ import {
   Unlock,
 } from 'lucide-react';
 import { SKILL_RUBRICS, calculateGrade } from '@/lib/scoring';
-import { savePhase1Action, savePhase2Action, savePhase3Action } from '@/app/evaluations/[id]/actions';
+import {
+  savePhase1Action,
+  savePhase2Action,
+  savePhase3Action,
+  toggleFormLockAction,
+  toggleItemLockAction,
+} from '@/app/evaluations/[id]/actions';
 import Link from 'next/link';
 
 interface EvaluationFormProps {
@@ -49,13 +55,18 @@ export default function EvaluationForm({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  // Form lock state (supervisor/dept head/admin can lock the form for the employee)
+  const [isFormLocked, setIsFormLocked] = useState<boolean>(Boolean(evaluation.isFormLocked));
+  const [lockedByName, setLockedByName] = useState<string | null>(evaluation.lockedByName || null);
+  const [lockedAt, setLockedAt] = useState<string | null>(evaluation.lockedAt ? new Date(evaluation.lockedAt).toISOString() : null);
+
   // Role permissions
   const isStaff = evaluation.staffProfile.email.toLowerCase() === currentUser.email.toLowerCase();
   const isSupervisor = evaluation.supervisor?.email.toLowerCase() === currentUser.email.toLowerCase();
   const isDeptHead = evaluation.deptHead?.email.toLowerCase() === currentUser.email.toLowerCase();
   const isAdmin = currentUser.role === 'SUPER_ADMIN' || currentUser.role === 'HR_ADMIN';
 
-  const canEmployeeEdit = isStaff || isAdmin;
+  const canEmployeeEdit = (isStaff || isAdmin) && (!isFormLocked || isSupervisor || isDeptHead || isAdmin);
   const canSupervisorEdit = isSupervisor || isDeptHead || isAdmin;
 
   // Strict Phase Active Checks
@@ -188,13 +199,42 @@ export default function EvaluationForm({
     }
   };
 
-  const toggleLockDuty = (dutyTitle: string) => {
+  const toggleLockDuty = async (dutyTitle: string) => {
     if (!canSupervisorEdit || !isPhase1Active) return;
-    setSelectedResponsibilities((prev) =>
-      prev.map((item) =>
-        item.title === dutyTitle ? { ...item, isLocked: !item.isLocked } : item
-      )
-    );
+    try {
+      setSelectedResponsibilities((prev) =>
+        prev.map((item) =>
+          item.title === dutyTitle ? { ...item, isLocked: !item.isLocked } : item
+        )
+      );
+      await toggleItemLockAction(evaluation.id, dutyTitle);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Error updating responsibility lock status');
+    }
+  };
+
+  const handleToggleFormLock = async () => {
+    if (!canSupervisorEdit) return;
+    try {
+      setIsSaving(true);
+      setErrorMessage(null);
+      const res = await toggleFormLockAction(evaluation.id);
+      setIsFormLocked(res.isFormLocked);
+      if (res.isFormLocked) {
+        const callerName = currentUser.fullName || currentUser.email;
+        setLockedByName(callerName);
+        setLockedAt(new Date().toISOString());
+        setSuccessMessage('Evaluation form has been locked for the employee.');
+      } else {
+        setLockedByName(null);
+        setLockedAt(null);
+        setSuccessMessage('Evaluation form has been unlocked.');
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Error updating form lock status');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleWeightChange = (title: string, weight: number) => {
@@ -379,6 +419,51 @@ export default function EvaluationForm({
         </div>
       )}
 
+      {/* Form Locked Warning Banner */}
+      {isFormLocked && (
+        <div className="bg-amber-50 border-2 border-amber-400 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0 text-amber-800">
+              <Lock className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-sm font-bold text-amber-950 flex items-center gap-2">
+                <span>Form Locked by {lockedByName || 'Supervisor'}</span>
+                {lockedAt && (
+                  <span className="text-xs font-normal text-amber-800">
+                    ({new Date(lockedAt).toLocaleString('en-US', {
+                      timeZone: 'Asia/Shanghai',
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      hour12: true,
+                    })} CST)
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-amber-800 mt-0.5">
+                {canSupervisorEdit
+                  ? 'This form is locked for the employee. As a supervisor or administrator, you retain editing capabilities and can unlock it anytime.'
+                  : 'This evaluation form has been locked by your supervisor. All editing and submissions are currently disabled.'}
+              </p>
+            </div>
+          </div>
+          {canSupervisorEdit && (
+            <button
+              type="button"
+              disabled={isSaving}
+              onClick={handleToggleFormLock}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-amber-950 bg-amber-200 hover:bg-amber-300 rounded-lg transition self-start sm:self-auto flex-shrink-0 disabled:opacity-50"
+            >
+              <Unlock className="w-4 h-4" />
+              <span>Unlock Form for Employee</span>
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Official Header Card */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="bg-blue-900 text-white p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -397,6 +482,36 @@ export default function EvaluationForm({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {canSupervisorEdit && (
+              <button
+                type="button"
+                disabled={isSaving}
+                onClick={handleToggleFormLock}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg shadow-sm transition ${
+                  isFormLocked
+                    ? 'bg-amber-300 hover:bg-amber-200 text-amber-950 font-bold'
+                    : 'bg-blue-800/90 hover:bg-blue-800 text-white'
+                }`}
+                title={
+                  isFormLocked
+                    ? 'Unlock form to allow employee editing'
+                    : 'Lock form to prevent employee editing'
+                }
+              >
+                {isFormLocked ? (
+                  <>
+                    <Unlock className="w-4 h-4 text-amber-950" />
+                    <span>Unlock Form for Employee</span>
+                  </>
+                ) : (
+                  <>
+                    <Lock className="w-4 h-4" />
+                    <span>Lock Form for Employee</span>
+                  </>
+                )}
+              </button>
+            )}
+
             <a
               href={`/api/evaluations/${evaluation.id}/pdf`}
               target="_blank"
@@ -502,24 +617,40 @@ export default function EvaluationForm({
                 const selectedItem = selectedResponsibilities.find((r) => r.title === duty);
                 const isSelected = Boolean(selectedItem);
                 const isLocked = Boolean(selectedItem?.isLocked);
+                const isRemoveDisabled = isLocked && !canSupervisorEdit;
+                const isAddDisabled = !isSelected && selectedResponsibilities.length >= 8;
+                const isButtonDisabled = isRemoveDisabled || isAddDisabled || (isFormLocked && !canSupervisorEdit);
+
                 return (
                   <button
                     key={idx}
                     type="button"
+                    disabled={isButtonDisabled}
                     onClick={() => toggleSelectDuty(duty)}
                     title={
-                      isLocked && !canSupervisorEdit
-                        ? 'Mandatory duty locked by supervisor (cannot be removed)'
+                      isRemoveDisabled
+                        ? 'Mandatory duty locked by your supervisor (cannot be removed)'
+                        : isFormLocked && !canSupervisorEdit
+                        ? 'Form locked by your supervisor: duty selection is disabled'
+                        : isAddDisabled
+                        ? 'Maximum of 8 responsibilities reached'
                         : isSelected
                         ? 'Click to deselect duty'
                         : 'Click to select duty'
                     }
-                    className={`text-left p-2.5 rounded-lg border text-xs transition flex items-center justify-between gap-2.5 cursor-pointer ${
-                      isSelected
+                    className={`text-left p-2.5 rounded-lg border text-xs transition flex items-center justify-between gap-2.5 ${
+                      isButtonDisabled
+                        ? 'cursor-not-allowed opacity-85 ' +
+                          (isLocked
+                            ? 'bg-amber-50/90 border-amber-300 text-amber-950 font-medium'
+                            : isSelected
+                            ? 'bg-blue-50/70 border-blue-200 text-blue-900'
+                            : 'bg-slate-100 text-slate-400 border-slate-200')
+                        : isSelected
                         ? isLocked
-                          ? 'bg-amber-50/90 border-amber-300 text-amber-950 font-medium'
-                          : 'bg-blue-50 border-blue-300 text-blue-950 font-medium'
-                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                          ? 'bg-amber-50/90 border-amber-300 text-amber-950 font-medium cursor-pointer'
+                          : 'bg-blue-50 border-blue-300 text-blue-950 font-medium cursor-pointer'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100 cursor-pointer'
                     }`}
                   >
                     <div className="flex items-start gap-2.5">
@@ -565,30 +696,34 @@ export default function EvaluationForm({
               ) : (
                 selectedResponsibilities.map((item, index) => {
                   const isWeightDisabled = !isPhase1Editable || (item.isLocked && !canSupervisorEdit);
-                  const weightDisabledReason = !isPhase1Active
-                    ? 'Weights can only be edited during Phase 1.'
+                  const weightDisabledReason = isFormLocked && !canSupervisorEdit
+                    ? 'Evaluation form locked by your supervisor: weights cannot be modified.'
+                    : !isPhase1Active
+                    ? 'Weights can only be established and edited during Phase 1 (Start of Year).'
                     : item.isLocked && !canSupervisorEdit
-                    ? 'Locked by supervisor as a mandatory duty (weight cannot be modified).'
+                    ? 'Mandatory duty locked by your supervisor (weight cannot be modified).'
                     : !isPhase1Editable
                     ? 'You do not have permission to edit responsibilities.'
                     : null;
 
-                  const selfScoreDisabledReason = !isPhase3Active
-                    ? 'Phase 3 is not active. Self-evaluation scores can only be entered during Phase 3.'
+                  const selfScoreDisabledReason = isFormLocked && !canSupervisorEdit
+                    ? 'Evaluation form locked by your supervisor: scoring is disabled.'
+                    : !isPhase3Active
+                    ? 'Self-evaluation scores open during Phase 3 (End of Year).'
                     : !canEmployeeEdit
                     ? 'Self-evaluation scores can only be entered by the employee.'
                     : isSelfEvaluationSubmitted
-                    ? 'Self-evaluation scores have already been submitted and locked.'
+                    ? 'Self-evaluation scores have been submitted and locked.'
                     : null;
 
                   const supervisorScoreDisabledReason = !isPhase3Active
-                    ? 'Phase 3 is not active. Supervisor scores can only be entered during Phase 3.'
+                    ? 'Supervisor scores open during Phase 3 (End of Year).'
                     : !canSupervisorEdit
-                    ? 'Only the supervisor can enter official evaluation scores.'
+                    ? 'Supervisor scores can only be entered by your supervisor or department leader.'
                     : !isSelfEvaluationSubmitted && !isAdmin
                     ? 'Awaiting employee self-evaluation submission before supervisor scoring opens.'
                     : isFinalCompleted
-                    ? 'Evaluation has been completed and locked.'
+                    ? 'Annual evaluation cycle is completed and officially locked.'
                     : null;
 
                   return (
@@ -782,22 +917,24 @@ export default function EvaluationForm({
             </thead>
             <tbody className="divide-y divide-slate-100">
               {skillItems.map((skill: any, index: number) => {
-                const selfScoreDisabledReason = !isPhase3Active
-                  ? 'Phase 3 is not active. Self-evaluation scores can only be entered during Phase 3.'
+                const selfScoreDisabledReason = isFormLocked && !canSupervisorEdit
+                  ? 'Evaluation form locked by your supervisor: scoring is disabled.'
+                  : !isPhase3Active
+                  ? 'Self-evaluation scores open during Phase 3 (End of Year).'
                   : !canEmployeeEdit
                   ? 'Self-evaluation scores can only be entered by the employee.'
                   : isSelfEvaluationSubmitted
-                  ? 'Self-evaluation scores have already been submitted and locked.'
+                  ? 'Self-evaluation scores have been submitted and locked.'
                   : null;
 
                 const supervisorScoreDisabledReason = !isPhase3Active
-                  ? 'Phase 3 is not active. Supervisor scores can only be entered during Phase 3.'
+                  ? 'Supervisor scores open during Phase 3 (End of Year).'
                   : !canSupervisorEdit
-                  ? 'Only the supervisor can enter official evaluation scores.'
+                  ? 'Supervisor scores can only be entered by your supervisor or department leader.'
                   : !isSelfEvaluationSubmitted && !isAdmin
                   ? 'Awaiting employee self-evaluation submission before supervisor scoring opens.'
                   : isFinalCompleted
-                  ? 'Evaluation has been completed and locked.'
+                  ? 'Annual evaluation cycle is completed and officially locked.'
                   : null;
 
                 return (
@@ -964,9 +1101,13 @@ export default function EvaluationForm({
               {!isDevEmployeeEditable && (
                 <span
                   className="text-[11px] text-slate-500 font-normal italic cursor-help"
-                  title="Editable only by the employee"
+                  title={
+                    isFormLocked && !canSupervisorEdit
+                      ? 'Form locked by your supervisor'
+                      : 'Editable only by the employee'
+                  }
                 >
-                  (Editable by Employee)
+                  {isFormLocked && !canSupervisorEdit ? '(Form Locked)' : '(Editable by Employee)'}
                 </span>
               )}
             </div>
@@ -980,7 +1121,13 @@ export default function EvaluationForm({
                 value={devRequestEmployee}
                 onChange={(e) => setDevRequestEmployee(e.target.value)}
                 placeholder="Specific training, workshops, or skills you would like to develop..."
-                title={!isDevEmployeeEditable ? 'Editable only by the employee' : undefined}
+                title={
+                  !isDevEmployeeEditable
+                    ? isFormLocked && !canSupervisorEdit
+                      ? 'Evaluation form locked by your supervisor: developmental requests cannot be edited.'
+                      : 'Developmental requests can only be entered by the employee.'
+                    : undefined
+                }
                 className="w-full text-xs border border-slate-300 rounded-md p-2 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-500"
               />
             </div>
@@ -994,7 +1141,13 @@ export default function EvaluationForm({
                 value={otherCommentsEmployee}
                 onChange={(e) => setOtherCommentsEmployee(e.target.value)}
                 placeholder="Additional comments regarding support or resources needed..."
-                title={!isDevEmployeeEditable ? 'Editable only by the employee' : undefined}
+                title={
+                  !isDevEmployeeEditable
+                    ? isFormLocked && !canSupervisorEdit
+                      ? 'Evaluation form locked by your supervisor: comments cannot be edited.'
+                      : 'Comments can only be entered by the employee.'
+                    : undefined
+                }
                 className="w-full text-xs border border-slate-300 rounded-md p-2 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-500"
               />
             </div>
@@ -1008,7 +1161,7 @@ export default function EvaluationForm({
               {!isDevSupervisorEditable && (
                 <span
                   className="text-[11px] text-slate-500 font-normal italic cursor-help"
-                  title="Editable only by the supervisor"
+                  title="Supervisor comments can only be entered by your supervisor or department leader"
                 >
                   (Editable by Supervisor)
                 </span>
@@ -1024,7 +1177,11 @@ export default function EvaluationForm({
                 value={devRequestSupervisor}
                 onChange={(e) => setDevRequestSupervisor(e.target.value)}
                 placeholder="Recommended courses, coaching, or institutional opportunities..."
-                title={!isDevSupervisorEditable ? 'Editable only by the supervisor or department leader' : undefined}
+                title={
+                  !isDevSupervisorEditable
+                    ? 'Supervisor developmental comments can only be entered by your supervisor or department leader.'
+                    : undefined
+                }
                 className="w-full text-xs border border-slate-300 rounded-md p-2 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-500"
               />
             </div>
@@ -1038,7 +1195,11 @@ export default function EvaluationForm({
                 value={otherCommentsSupervisor}
                 onChange={(e) => setOtherCommentsSupervisor(e.target.value)}
                 placeholder="Additional notes from supervisor..."
-                title={!isDevSupervisorEditable ? 'Editable only by the supervisor or department leader' : undefined}
+                title={
+                  !isDevSupervisorEditable
+                    ? 'Supervisor comments can only be entered by your supervisor or department leader.'
+                    : undefined
+                }
                 className="w-full text-xs border border-slate-300 rounded-md p-2 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-500"
               />
             </div>
@@ -1060,9 +1221,13 @@ export default function EvaluationForm({
           {!isGoalsEditable && (
             <span
               className="text-[11px] text-slate-500 italic cursor-help"
-              title="Goals can only be drafted and modified during Phase 1"
+              title={
+                isFormLocked && !canSupervisorEdit
+                  ? 'Form locked by your supervisor'
+                  : 'Goals are established during Phase 1 (Start of Year)'
+              }
             >
-              (Editable during Phase 1)
+              {isFormLocked && !canSupervisorEdit ? '(Form Locked)' : '(Editable during Phase 1)'}
             </span>
           )}
         </div>
@@ -1083,7 +1248,15 @@ export default function EvaluationForm({
                   setGoals(updated);
                 }}
                 placeholder={`Goal ${g.goalIndex} description...`}
-                title={!isGoalsEditable ? 'Goals can only be drafted and modified during Phase 1' : undefined}
+                title={
+                  !isGoalsEditable
+                    ? isFormLocked && !canSupervisorEdit
+                      ? 'Form locked by your supervisor: goals cannot be modified.'
+                      : !isPhase1Active
+                      ? 'Goals are established during Phase 1 (Start of Year) and are locked for subsequent phases.'
+                      : 'You do not have permission to edit goals.'
+                    : undefined
+                }
                 className="flex-1 text-xs border border-slate-300 rounded-md p-2 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-500"
               />
             </div>
@@ -1113,9 +1286,19 @@ export default function EvaluationForm({
               {!isPhase2EmployeeEditable && (
                 <span
                   className="text-[11px] text-slate-500 italic cursor-help"
-                  title={!isPhase2Active ? 'Mid-year review opens during Phase 2' : 'Editable only by the employee'}
+                  title={
+                    isFormLocked && !canSupervisorEdit
+                      ? 'Form locked by your supervisor'
+                      : !isPhase2Active
+                      ? 'Mid-year review opens during Phase 2'
+                      : 'Editable only by the employee'
+                  }
                 >
-                  {!isPhase2Active ? '(Opens in Phase 2)' : '(Editable by Employee)'}
+                  {isFormLocked && !canSupervisorEdit
+                    ? '(Form Locked)'
+                    : !isPhase2Active
+                    ? '(Opens in Phase 2)'
+                    : '(Editable by Employee)'}
                 </span>
               )}
             </div>
@@ -1126,10 +1309,14 @@ export default function EvaluationForm({
               onChange={(e) => setMidYearEmployee(e.target.value)}
               placeholder="Reflections on goal progress achieved since start of year..."
               title={
-                !isPhase2Active
-                  ? 'Mid-year review comments can only be entered during Phase 2.'
-                  : !canEmployeeEdit
-                  ? 'Editable only by the employee.'
+                !isPhase2EmployeeEditable
+                  ? isFormLocked && !canSupervisorEdit
+                    ? 'Form locked by your supervisor: mid-year reflection cannot be edited.'
+                    : !isPhase2Active
+                    ? 'Mid-year review comments open during Phase 2 (Mid-Year).'
+                    : !canEmployeeEdit
+                    ? 'Mid-year reflection can only be entered by the employee.'
+                    : undefined
                   : undefined
               }
               className="w-full text-xs border border-slate-300 rounded-md p-2.5 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-500"
@@ -1144,7 +1331,11 @@ export default function EvaluationForm({
               {!isPhase2SupervisorEditable && (
                 <span
                   className="text-[11px] text-slate-500 italic cursor-help"
-                  title={!isPhase2Active ? 'Mid-year review opens during Phase 2' : 'Editable only by the supervisor'}
+                  title={
+                    !isPhase2Active
+                      ? 'Mid-year review opens during Phase 2'
+                      : 'Supervisor feedback can only be entered by your supervisor or department leader'
+                  }
                 >
                   {!isPhase2Active ? '(Opens in Phase 2)' : '(Editable by Supervisor)'}
                 </span>
@@ -1157,10 +1348,12 @@ export default function EvaluationForm({
               onChange={(e) => setMidYearSupervisor(e.target.value)}
               placeholder="Constructive mid-year feedback and adjustments for second semester..."
               title={
-                !isPhase2Active
-                  ? 'Mid-year review comments can only be entered during Phase 2.'
-                  : !canSupervisorEdit
-                  ? 'Editable only by the supervisor.'
+                !isPhase2SupervisorEditable
+                  ? !isPhase2Active
+                    ? 'Mid-year review comments open during Phase 2 (Mid-Year).'
+                    : !canSupervisorEdit
+                    ? 'Mid-year feedback can only be entered by your supervisor or department leader.'
+                    : undefined
                   : undefined
               }
               className="w-full text-xs border border-slate-300 rounded-md p-2.5 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-500"
@@ -1192,14 +1385,18 @@ export default function EvaluationForm({
                 <span
                   className="text-[11px] text-slate-500 italic cursor-help"
                   title={
-                    !isPhase3Active
+                    isFormLocked && !canSupervisorEdit
+                      ? 'Form locked by your supervisor'
+                      : !isPhase3Active
                       ? 'End-of-year review opens during Phase 3'
                       : isSelfEvaluationSubmitted
                       ? 'Self-evaluation comments submitted and locked'
                       : 'Editable only by the employee'
                   }
                 >
-                  {!isPhase3Active
+                  {isFormLocked && !canSupervisorEdit
+                    ? '(Form Locked)'
+                    : !isPhase3Active
                     ? '(Opens in Phase 3)'
                     : isSelfEvaluationSubmitted
                     ? '(Submitted & Locked)'
@@ -1214,12 +1411,16 @@ export default function EvaluationForm({
               onChange={(e) => setFinalCommentsEmployee(e.target.value)}
               placeholder="Summary of annual achievements, highlights, and growth..."
               title={
-                !isPhase3Active
-                  ? 'End-of-year review comments can only be entered during Phase 3.'
-                  : isSelfEvaluationSubmitted
-                  ? 'Self-evaluation has already been submitted and locked.'
-                  : !canEmployeeEdit
-                  ? 'Editable only by the employee.'
+                !isPhase3SelfEditable
+                  ? isFormLocked && !canSupervisorEdit
+                    ? 'Evaluation form locked by your supervisor: end-of-year reflection cannot be edited.'
+                    : !isPhase3Active
+                    ? 'End-of-year review comments open during Phase 3 (End of Year).'
+                    : isSelfEvaluationSubmitted
+                    ? 'Self-evaluation has already been submitted and locked.'
+                    : !canEmployeeEdit
+                    ? 'End-of-year reflection can only be entered by the employee.'
+                    : undefined
                   : undefined
               }
               className="w-full text-xs border border-slate-300 rounded-md p-2.5 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-500"
@@ -1240,8 +1441,8 @@ export default function EvaluationForm({
                       : !isSelfEvaluationSubmitted && !isAdmin
                       ? 'Awaiting employee self-evaluation submission before supervisor review'
                       : isFinalCompleted
-                      ? 'Final evaluation completed and locked'
-                      : 'Editable only by the supervisor'
+                      ? 'Final review completed and locked'
+                      : 'Supervisor review can only be entered by your supervisor or department leader'
                   }
                 >
                   {!isPhase3Active
@@ -1261,14 +1462,16 @@ export default function EvaluationForm({
               onChange={(e) => setFinalCommentsSupervisor(e.target.value)}
               placeholder="Comprehensive summary of employee performance and leadership observations..."
               title={
-                !isPhase3Active
-                  ? 'End-of-year review comments can only be entered during Phase 3.'
-                  : !isSelfEvaluationSubmitted && !isAdmin
-                  ? 'Awaiting employee self-evaluation submission before supervisor review.'
-                  : isFinalCompleted
-                  ? 'Final evaluation has been completed and locked.'
-                  : !canSupervisorEdit
-                  ? 'Editable only by the supervisor.'
+                !isPhase3SupervisorEditable
+                  ? !isPhase3Active
+                    ? 'End-of-year review comments open during Phase 3 (End of Year).'
+                    : !isSelfEvaluationSubmitted && !isAdmin
+                    ? 'Awaiting employee self-evaluation submission before supervisor review.'
+                    : isFinalCompleted
+                    ? 'Annual evaluation cycle is completed and officially locked.'
+                    : !canSupervisorEdit
+                    ? 'End-of-year summary can only be entered by your supervisor or department leader.'
+                    : undefined
                   : undefined
               }
               className="w-full text-xs border border-slate-300 rounded-md p-2.5 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-500"
@@ -1282,6 +1485,12 @@ export default function EvaluationForm({
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold text-slate-600">Phase Actions:</span>
+            {isFormLocked && !canSupervisorEdit && (
+              <span className="text-xs font-bold text-amber-900 bg-amber-100 border border-amber-300 px-2.5 py-0.5 rounded inline-flex items-center gap-1">
+                <Lock className="w-3.5 h-3.5 text-amber-700" />
+                <span>Form Locked by Supervisor</span>
+              </span>
+            )}
             {currentPhaseInfo.phase === 1 && (
               <span className="text-xs text-blue-900 font-bold bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
                 Phase 1 Active ({totalWeightA}/80 pts)
@@ -1306,6 +1515,28 @@ export default function EvaluationForm({
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Supervisor Lock/Unlock Toggle Button */}
+            {canSupervisorEdit && (
+              <button
+                type="button"
+                disabled={isSaving}
+                onClick={handleToggleFormLock}
+                className={`px-3.5 py-2 text-xs font-semibold rounded-lg transition disabled:opacity-50 inline-flex items-center gap-1.5 ${
+                  isFormLocked
+                    ? 'bg-amber-200 hover:bg-amber-300 text-amber-950 font-bold border border-amber-400 shadow-sm'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300'
+                }`}
+                title={
+                  isFormLocked
+                    ? 'Form is currently locked for the employee. Click to unlock.'
+                    : 'Lock this form so the employee cannot make any changes.'
+                }
+              >
+                {isFormLocked ? <Unlock className="w-3.5 h-3.5 text-amber-950" /> : <Lock className="w-3.5 h-3.5 text-slate-600" />}
+                <span>{isFormLocked ? 'Unlock Form' : 'Lock Form'}</span>
+              </button>
+            )}
+
             {/* Phase 1 Save / Submit */}
             {isPhase1Active && canSupervisorEdit && (
               <>
@@ -1339,9 +1570,10 @@ export default function EvaluationForm({
             {isPhase1Active && canEmployeeEdit && !canSupervisorEdit && (
               <button
                 type="button"
-                disabled={isSaving}
+                disabled={isSaving || isFormLocked}
                 onClick={() => handleSavePhase1(false)}
-                className="px-4 py-2 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 rounded-lg shadow transition disabled:opacity-50"
+                title={isFormLocked ? 'Form locked by supervisor: saving is disabled' : undefined}
+                className="px-4 py-2 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 rounded-lg shadow transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Save className="w-3.5 h-3.5 inline mr-1" />
                 <span>Save Draft (Responsibilities & Goals)</span>
@@ -1353,18 +1585,20 @@ export default function EvaluationForm({
               <>
                 <button
                   type="button"
-                  disabled={isSaving}
+                  disabled={isSaving || (isFormLocked && !canSupervisorEdit)}
                   onClick={() => handleSavePhase2(false)}
-                  className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition disabled:opacity-50"
+                  title={isFormLocked && !canSupervisorEdit ? 'Form locked by supervisor: saving is disabled' : undefined}
+                  className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Save className="w-3.5 h-3.5 inline mr-1" />
                   <span>Save Draft</span>
                 </button>
                 <button
                   type="button"
-                  disabled={isSaving}
+                  disabled={isSaving || (isFormLocked && !canSupervisorEdit)}
                   onClick={() => handleSavePhase2(true)}
-                  className="px-4 py-2 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 rounded-lg shadow transition disabled:opacity-50"
+                  title={isFormLocked && !canSupervisorEdit ? 'Form locked by supervisor: submitting is disabled' : undefined}
+                  className="px-4 py-2 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 rounded-lg shadow transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Send className="w-3.5 h-3.5 inline mr-1" />
                   <span>Submit Phase 2</span>
@@ -1377,18 +1611,20 @@ export default function EvaluationForm({
               <>
                 <button
                   type="button"
-                  disabled={isSaving}
+                  disabled={isSaving || isFormLocked}
                   onClick={() => handleSavePhase3()}
-                  className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition disabled:opacity-50"
+                  title={isFormLocked ? 'Form locked by supervisor: saving is disabled' : undefined}
+                  className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Save className="w-3.5 h-3.5 inline mr-1" />
                   <span>Save Draft</span>
                 </button>
                 <button
                   type="button"
-                  disabled={isSaving}
+                  disabled={isSaving || isFormLocked}
                   onClick={() => handleSavePhase3('self')}
-                  className="px-4 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-600 rounded-lg shadow transition disabled:opacity-50"
+                  title={isFormLocked ? 'Form locked by supervisor: submitting is disabled' : undefined}
+                  className="px-4 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-600 rounded-lg shadow transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Send className="w-3.5 h-3.5 inline mr-1" />
                   <span>Submit Self Evaluation</span>

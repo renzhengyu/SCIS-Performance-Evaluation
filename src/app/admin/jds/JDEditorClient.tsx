@@ -12,12 +12,14 @@ interface JDEditorClientProps {
   initialData?: any;
   allOtherJds: { id: string; title: string }[];
   globalFooterText: string;
+  readOnly?: boolean;
 }
 
 export default function JDEditorClient({
   initialData,
   allOtherJds,
   globalFooterText,
+  readOnly = false,
 }: JDEditorClientProps) {
   const router = useRouter();
   const [title, setTitle] = useState(initialData?.title || '');
@@ -150,25 +152,27 @@ export default function JDEditorClient({
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
-          href="/admin/jds"
+          href={readOnly ? '/dashboard' : '/admin/jds'}
           className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600 hover:text-slate-900"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>Back to JD Catalog</span>
+          <span>{readOnly ? 'Back to Dashboard' : 'Back to JD Catalog'}</span>
         </Link>
 
-        <div className="flex items-center gap-2">
-          <JDUploadModal onParsed={applyParsedData} />
+        {!readOnly && (
+          <div className="flex items-center gap-2">
+            <JDUploadModal onParsed={applyParsedData} />
 
-          <button
-            type="submit"
-            disabled={isSaving}
-            className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 rounded-lg shadow transition disabled:opacity-50 cursor-pointer"
-          >
-            <Save className="w-4 h-4" />
-            <span>{isSaving ? 'Saving...' : 'Save Job Description'}</span>
-          </button>
-        </div>
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 rounded-lg shadow transition disabled:opacity-50 cursor-pointer"
+            >
+              <Save className="w-4 h-4" />
+              <span>{isSaving ? 'Saving...' : 'Save Job Description'}</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {parseNotice && (
@@ -210,15 +214,16 @@ export default function JDEditorClient({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Job Title * (Must be Unique)
+              Job Title {readOnly ? '' : '* (Must be Unique)'}
             </label>
             <input
               type="text"
-              required
+              required={!readOnly}
+              disabled={readOnly}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Apple Hardware Specialist"
-              className="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:ring-1 focus:ring-blue-500 font-medium"
+              className="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:ring-1 focus:ring-blue-500 font-medium disabled:bg-slate-50 disabled:text-slate-800"
             />
           </div>
 
@@ -228,8 +233,9 @@ export default function JDEditorClient({
             </label>
             <select
               value={reportsToJdId}
+              disabled={readOnly}
               onChange={(e) => setReportsToJdId(e.target.value)}
-              className="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:ring-1 focus:ring-blue-500 font-medium bg-white"
+              className="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:ring-1 focus:ring-blue-500 font-medium bg-white disabled:bg-slate-50 disabled:text-slate-800"
             >
               <option value="">-- None / Head of School / Top-Level --</option>
               {allOtherJds.map((jd) => (
@@ -238,9 +244,11 @@ export default function JDEditorClient({
                 </option>
               ))}
             </select>
-            <p className="text-[11px] text-slate-500 mt-1">
-              Select the supervisor's position from existing Job Descriptions.
-            </p>
+            {!readOnly && (
+              <p className="text-[11px] text-slate-500 mt-1">
+                Select the supervisor's position from existing Job Descriptions.
+              </p>
+            )}
           </div>
         </div>
 
@@ -250,6 +258,7 @@ export default function JDEditorClient({
           </label>
           <textarea
             rows={3}
+            disabled={readOnly}
             value={positionSummary}
             ref={autoResize}
             onChange={(e) => {
@@ -257,7 +266,7 @@ export default function JDEditorClient({
               autoResize(e.target);
             }}
             placeholder="High-level purpose and scope of the role..."
-            className="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:ring-1 focus:ring-blue-500 resize-y"
+            className="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:ring-1 focus:ring-blue-500 resize-y disabled:bg-slate-50 disabled:text-slate-800"
           />
         </div>
       </div>
@@ -273,14 +282,16 @@ export default function JDEditorClient({
               Staff and supervisors will select 4–8 of these items during Phase 1 evaluation.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => addListItem(setResponsibilities)}
-            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-900 bg-blue-50 hover:bg-blue-100 rounded-lg transition cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Add Duty</span>
-          </button>
+          {!readOnly && (
+            <button
+              type="button"
+              onClick={() => addListItem(setResponsibilities)}
+              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-900 bg-blue-50 hover:bg-blue-100 rounded-lg transition cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Duty</span>
+            </button>
+          )}
         </div>
 
         <div className="space-y-3">
@@ -291,22 +302,25 @@ export default function JDEditorClient({
               </span>
               <textarea
                 rows={1}
+                disabled={readOnly}
                 value={item}
                 ref={autoResize}
                 onChange={(e) => {
                   handleListChange(setResponsibilities, idx, e.target.value);
                   autoResize(e.target);
                 }}
-                placeholder="Enter responsibility bullet point (auto-expands for long descriptions)..."
-                className="flex-1 text-xs border border-slate-300 rounded-lg p-2 focus:ring-1 focus:ring-blue-500 resize-none leading-relaxed"
+                placeholder="Enter responsibility bullet point..."
+                className="flex-1 text-xs border border-slate-300 rounded-lg p-2 focus:ring-1 focus:ring-blue-500 resize-none leading-relaxed disabled:bg-slate-50 disabled:text-slate-800"
               />
-              <button
-                type="button"
-                onClick={() => removeListItem(setResponsibilities, idx)}
-                className="p-2 text-slate-400 hover:text-rose-600 transition mt-1 cursor-pointer"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
+              {!readOnly && (
+                <button
+                  type="button"
+                  onClick={() => removeListItem(setResponsibilities, idx)}
+                  className="p-2 text-slate-400 hover:text-rose-600 transition mt-1 cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -321,14 +335,16 @@ export default function JDEditorClient({
             </h2>
             <p className="text-xs text-slate-500">Bullet points of required capabilities.</p>
           </div>
-          <button
-            type="button"
-            onClick={() => addListItem(setSkillsAttributes)}
-            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-900 bg-blue-50 hover:bg-blue-100 rounded-lg transition cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Add Skill</span>
-          </button>
+          {!readOnly && (
+            <button
+              type="button"
+              onClick={() => addListItem(setSkillsAttributes)}
+              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-900 bg-blue-50 hover:bg-blue-100 rounded-lg transition cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Skill</span>
+            </button>
+          )}
         </div>
 
         <div className="space-y-3">
@@ -339,6 +355,7 @@ export default function JDEditorClient({
               </span>
               <textarea
                 rows={1}
+                disabled={readOnly}
                 value={item}
                 ref={autoResize}
                 onChange={(e) => {
@@ -346,15 +363,17 @@ export default function JDEditorClient({
                   autoResize(e.target);
                 }}
                 placeholder="e.g. Strong diagnostic and communication skills..."
-                className="flex-1 text-xs border border-slate-300 rounded-lg p-2 focus:ring-1 focus:ring-blue-500 resize-none leading-relaxed"
+                className="flex-1 text-xs border border-slate-300 rounded-lg p-2 focus:ring-1 focus:ring-blue-500 resize-none leading-relaxed disabled:bg-slate-50 disabled:text-slate-800"
               />
-              <button
-                type="button"
-                onClick={() => removeListItem(setSkillsAttributes, idx)}
-                className="p-2 text-slate-400 hover:text-rose-600 transition mt-1 cursor-pointer"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
+              {!readOnly && (
+                <button
+                  type="button"
+                  onClick={() => removeListItem(setSkillsAttributes, idx)}
+                  className="p-2 text-slate-400 hover:text-rose-600 transition mt-1 cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -369,14 +388,16 @@ export default function JDEditorClient({
             </h2>
             <p className="text-xs text-slate-500">Degrees, certifications, and experience.</p>
           </div>
-          <button
-            type="button"
-            onClick={() => addListItem(setQualifications)}
-            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-900 bg-blue-50 hover:bg-blue-100 rounded-lg transition cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Add Qualification</span>
-          </button>
+          {!readOnly && (
+            <button
+              type="button"
+              onClick={() => addListItem(setQualifications)}
+              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-900 bg-blue-50 hover:bg-blue-100 rounded-lg transition cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Qualification</span>
+            </button>
+          )}
         </div>
 
         <div className="space-y-3">
@@ -387,6 +408,7 @@ export default function JDEditorClient({
               </span>
               <textarea
                 rows={1}
+                disabled={readOnly}
                 value={item}
                 ref={autoResize}
                 onChange={(e) => {
@@ -394,15 +416,17 @@ export default function JDEditorClient({
                   autoResize(e.target);
                 }}
                 placeholder="e.g. Bachelor's in Computer Science, Apple certification..."
-                className="flex-1 text-xs border border-slate-300 rounded-lg p-2 focus:ring-1 focus:ring-blue-500 resize-none leading-relaxed"
+                className="flex-1 text-xs border border-slate-300 rounded-lg p-2 focus:ring-1 focus:ring-blue-500 resize-none leading-relaxed disabled:bg-slate-50 disabled:text-slate-800"
               />
-              <button
-                type="button"
-                onClick={() => removeListItem(setQualifications, idx)}
-                className="p-2 text-slate-400 hover:text-rose-600 transition mt-1 cursor-pointer"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
+              {!readOnly && (
+                <button
+                  type="button"
+                  onClick={() => removeListItem(setQualifications, idx)}
+                  className="p-2 text-slate-400 hover:text-rose-600 transition mt-1 cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
             </div>
           ))}
         </div>

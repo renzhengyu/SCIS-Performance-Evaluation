@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import SessionProvider from '@/components/SessionProvider';
 import GlobalImpersonationBanner from '@/components/GlobalImpersonationBanner';
+import Footer from '@/components/Footer';
 
 export const metadata: Metadata = {
   title: 'SCIS Staff Performance Evaluation Portal',
@@ -18,7 +19,10 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col font-sans text-slate-900">
         <SessionProvider>
           <GlobalImpersonationBanner />
-          {children}
+          <div className="flex-1 flex flex-col">
+            {children}
+          </div>
+          <Footer />
         </SessionProvider>
       </body>
     </html>

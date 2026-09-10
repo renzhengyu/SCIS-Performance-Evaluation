@@ -42,10 +42,10 @@ export default async function DashboardPage() {
 
   // Find or create current evaluation for this staff member
   let currentEvaluation = null;
-  if (user?.staffProfile && schoolYear) {
+  if (staffProfile && schoolYear) {
     currentEvaluation = await prisma.evaluation.findFirst({
       where: {
-        staffProfileId: user.staffProfile.id,
+        staffProfileId: staffProfile.id,
         schoolYearId: schoolYear.id,
       },
       include: {
@@ -57,9 +57,9 @@ export default async function DashboardPage() {
 
   // Find direct reports if user is a supervisor
   let directReports: any[] = [];
-  if (user?.staffProfile) {
+  if (staffProfile) {
     const subordinates = await prisma.staffProfile.findMany({
-      where: { supervisorId: user.staffProfile.id },
+      where: { supervisorId: staffProfile.id },
       include: {
         user: true,
         jobDescription: true,
@@ -74,9 +74,9 @@ export default async function DashboardPage() {
 
   // Find department reports if user is dept head
   let deptReports: any[] = [];
-  if (user?.staffProfile) {
+  if (staffProfile) {
     deptReports = await prisma.staffProfile.findMany({
-      where: { deptHeadId: user.staffProfile.id },
+      where: { deptHeadId: staffProfile.id },
       include: {
         user: true,
         supervisor: true,
@@ -120,20 +120,20 @@ export default async function DashboardPage() {
               )}
             </div>
             <h1 className="text-2xl font-bold text-slate-900 mt-2">
-              Welcome, {user?.staffProfile?.fullName || user?.name || user?.email}
+              Welcome, {staffProfile?.fullName || user?.name || user?.email}
             </h1>
             <p className="text-sm text-slate-600 mt-1">
-              Position: <span className="font-semibold text-slate-800">{user?.staffProfile?.jobDescription?.title || 'Staff Member'}</span> &bull; Campus:{' '}
-              <span className="font-semibold text-slate-800">{user?.staffProfile?.campus || 'Systemwide'}</span> &bull; Department:{' '}
-              <span className="font-semibold text-slate-800">{user?.staffProfile?.department || 'General'}</span>
+              Position: <span className="font-semibold text-slate-800">{staffProfile?.jobDescription?.title || 'Staff Member'}</span> &bull; Campus:{' '}
+              <span className="font-semibold text-slate-800">{staffProfile?.campus || 'Systemwide'}</span> &bull; Department:{' '}
+              <span className="font-semibold text-slate-800">{staffProfile?.department || 'General'}</span>
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            {user?.staffProfile?.jobDescription && (
+            {staffProfile?.jobDescription && (
               <Link
-                href={`/admin/jds/${user.staffProfile.jobDescription.id}`}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg shadow-sm hover:bg-slate-50 transition"
+                href={`/admin/jds/${staffProfile.jobDescription.id}`}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg shadow-sm hover:bg-slate-50 transition cursor-pointer"
               >
                 <FileText className="w-4 h-4 text-slate-500" />
                 <span>View My Job Description</span>
@@ -273,11 +273,11 @@ export default async function DashboardPage() {
               <p className="text-sm text-slate-600 mt-1">
                 Supervisor:{' '}
                 <span className="font-semibold text-slate-800">
-                  {user?.staffProfile?.supervisor?.fullName || 'Not assigned'}
+                  {staffProfile?.supervisor?.fullName || 'Not assigned'}
                 </span>{' '}
                 &bull; Dept Head:{' '}
                 <span className="font-semibold text-slate-800">
-                  {user?.staffProfile?.deptHead?.fullName || 'Not assigned'}
+                  {staffProfile?.deptHead?.fullName || 'Not assigned'}
                 </span>
               </p>
             </div>

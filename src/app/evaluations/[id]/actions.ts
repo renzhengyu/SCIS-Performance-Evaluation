@@ -50,6 +50,13 @@ export async function savePhase1Action(
     throw new Error('You do not have permission to edit this evaluation.');
   }
 
+  const isSupervisorOrAdmin = isSupervisor || isDeptHead || isAdmin;
+
+  // Form lock check: if supervisor locked the form, employee cannot edit
+  if (evaluation.isFormLocked && !isSupervisorOrAdmin) {
+    throw new Error('This evaluation form has been locked by your supervisor. Editing is currently disabled.');
+  }
+
   // Phase window check
   const { date: effectiveDate, isSimulated } = await getEffectiveDate();
   const phaseInfo = calculatePhase(evaluation.schoolYear, effectiveDate, isSimulated);
@@ -241,6 +248,13 @@ export async function savePhase2Action(
     throw new Error('Unauthorized to edit this evaluation.');
   }
 
+  const isSupervisorOrAdmin = isSupervisor || isDeptHead || isAdmin;
+
+  // Form lock check: if supervisor locked the form, employee cannot edit
+  if (evaluation.isFormLocked && !isSupervisorOrAdmin) {
+    throw new Error('This evaluation form has been locked by your supervisor. Editing is currently disabled.');
+  }
+
   const { date: effectiveDate, isSimulated } = await getEffectiveDate();
   const phaseInfo = calculatePhase(evaluation.schoolYear, effectiveDate, isSimulated);
 
@@ -329,6 +343,13 @@ export async function savePhase3Action(
 
   if (!isStaff && !isSupervisor && !isDeptHead && !isAdmin) {
     throw new Error('Unauthorized to edit this evaluation.');
+  }
+
+  const isSupervisorOrAdmin = isSupervisor || isDeptHead || isAdmin;
+
+  // Form lock check: if supervisor locked the form, employee cannot edit
+  if (evaluation.isFormLocked && !isSupervisorOrAdmin) {
+    throw new Error('This evaluation form has been locked by your supervisor. Editing is currently disabled.');
   }
 
   const { date: effectiveDate, isSimulated } = await getEffectiveDate();
@@ -459,4 +480,124 @@ export async function savePhase3Action(
 
   revalidatePath(`/evaluations/${evaluationId}`);
   return { success: true };
+}
+
+/**
+ * Lock or unlock the evaluation form (supervisor/dept head/admin only).
+ * When locked, the employee cannot edit anything on the form.
+ */
+export async function toggleFormLockAction(evaluationId: string) {
+  const effectiveSession = await getEffectiveSessionUser();
+  if (!effectiveSession?.user?.email) throw new Error('Unauthorized');
+
+  const user = effectiveSession.user;
+  const userEmail = user.email.toLowerCase();
+
+  const evaluation = await prisma.evaluation.findUnique({
+    where: { id: evaluationId },
+    include: {
+      supervisor: { include: { user: true } },
+      deptHead: { include: { user: true } },
+    },
+  });
+  if (!evaluation) throw new Error('Evaluation not found');
+
+  const isSupervisor = evaluation.supervisor?.email.toLowerCase() === userEmail;
+  const isDeptHead = evaluation.deptHead?.email.toLowerCase() === userEmail;
+  const isAdmin = user.role === 'SUPER_ADMIN' || user.role === 'HR_ADMIN';
+
+  if (!isSupervisor && !isDeptHead && !isAdmin) {
+    throw new Error('Only a supervisor, department leader, or administrator can lock or unlock this form.');
+  }
+
+  const newLocked = !evaluation.isFormLocked;
+  const callerName = effectiveSession.staffProfile?.fullName || user.name || user.email;
+
+  await prisma.evaluation.update({
+    where: { id: evaluationId },
+    data: {
+      isFormLocked: newLocked,
+      lockedByName: newLocked ? callerName : null,
+      lockedByEmail: newLocked ? userEmail : null,
+      lockedAt: newLocked ? new Date() : null,
+    },
+  });
+
+  await logAudit({
+    userId: user.id,
+    userEmail: user.email,
+    userName: callerName,
+    action: newLocked ? 'FORM_LOCKED' : 'FORM_UNLOCKED',
+    entityType: 'Evaluation',
+    entityId: evaluationId,
+    diffData: {
+      isFormLocked: newLocked,
+      lockedByName: newLocked ? callerName : null,
+    },
+  });
+
+  revalidatePath(`/evaluations/${evaluationId}`);
+  return { success: true, isFormLocked: newLocked };
+}
+
+/**
+ * Lock or unlock an individual responsibility item (supervisor/dept head/admin only).
+ */
+export async function toggleItemLockAction(evaluationId: string, itemTitle: string) {
+  const effectiveSession = await getEffectiveSessionUser();
+  if (!effectiveSession?.user?.email) throw new Error('Unauthorized');
+
+  const user = effectiveSession.user;
+  const userEmail = user.email.toLowerCase();
+
+  const evaluation = await prisma.evaluation.findUnique({
+    where: { id: evaluationId },
+    include: {
+      supervisor: { include: { user: true } },
+      deptHead: { include: { user: true } },
+    },
+  });
+  if (!evaluation) throw new Error('Evaluation not found');
+
+  const isSupervisor = evaluation.supervisor?.email.toLowerCase() === userEmail;
+  const isDeptHead = evaluation.deptHead?.email.toLowerCase() === userEmail;
+  const isAdmin = user.role === 'SUPER_ADMIN' || user.role === 'HR_ADMIN';
+
+  if (!isSupervisor && !isDeptHead && !isAdmin) {
+    throw new Error('Only a supervisor, department leader, or administrator can lock or unlock responsibility items.');
+  }
+
+  const item = await prisma.evaluationItem.findFirst({
+    where: {
+      evaluationId,
+      title: itemTitle,
+      itemType: ItemType.RESPONSIBILITY,
+    },
+  });
+
+  if (!item) {
+    // If not found in DB yet (e.g. newly picked in Phase 1 before save), return success with new state
+    return { success: true, isLocked: true };
+  }
+
+  const updatedItem = await prisma.evaluationItem.update({
+    where: { id: item.id },
+    data: { isLocked: !item.isLocked },
+  });
+
+  await logAudit({
+    userId: user.id,
+    userEmail: user.email,
+    userName: effectiveSession.staffProfile?.fullName || user.name || user.email,
+    action: updatedItem.isLocked ? 'RESPONSIBILITY_LOCKED' : 'RESPONSIBILITY_UNLOCKED',
+    entityType: 'EvaluationItem',
+    entityId: item.id,
+    diffData: {
+      title: itemTitle,
+      isLocked: updatedItem.isLocked,
+    },
+  });
+
+  revalidatePath(`/evaluations/${evaluationId}`);
+  return { success: true, isLocked: updatedItem.isLocked };
 }

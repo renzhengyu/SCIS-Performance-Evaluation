@@ -166,7 +166,10 @@ export async function getEffectiveSessionUser() {
   }
 
   return {
-    user: targetStaff.user,
+    user: {
+      ...targetStaff.user,
+      staffProfile: targetStaff,
+    },
     staffProfile: targetStaff,
     isImpersonating: true,
     realUser: {
