@@ -36,6 +36,9 @@ export default async function StaffAdminPage() {
     email: s.email,
   }));
 
+  const { getOrgOptionsAction } = await import('./actions');
+  const { campuses, departments } = await getOrgOptionsAction();
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       <Navbar />
@@ -59,6 +62,8 @@ export default async function StaffAdminPage() {
           allJDs={allJDs}
           allSupervisors={allStaffOptions}
           allDeptHeads={allStaffOptions}
+          initialCampuses={campuses}
+          initialDepartments={departments}
         />
       </main>
     </div>

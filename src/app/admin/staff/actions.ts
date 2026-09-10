@@ -195,3 +195,99 @@ export async function deleteStaffProfileAction(profileId: string) {
   revalidatePath('/admin/staff');
   return { success: true };
 }
+
+export const DEFAULT_CAMPUSES = [
+  'Systemwide',
+  'Hongqiao Campus',
+  'Hongqiao ECE',
+  'Pudong Campus',
+];
+
+export const DEFAULT_DEPARTMENTS = [
+  'Technology and Innovation',
+  'Early Childhood Education (ECE)',
+  'Lower School / Primary',
+  'Upper School / Secondary',
+  'Student Support Services',
+  'Operations & Facilities',
+  'Human Resources',
+  'Finance & Business Office',
+  'Athletics & Activities',
+  'Admissions & Marketing',
+  'General Administration',
+];
+
+export async function getOrgOptionsAction() {
+  const config = await prisma.systemConfig.findUnique({
+    where: { id: 'singleton' },
+  });
+
+  const campuses: string[] =
+    Array.isArray(config?.campusOptions) && (config.campusOptions as string[]).length > 0
+      ? (config.campusOptions as string[])
+      : DEFAULT_CAMPUSES;
+
+  const departments: string[] =
+    Array.isArray(config?.departmentOptions) && (config.departmentOptions as string[]).length > 0
+      ? (config.departmentOptions as string[])
+      : DEFAULT_DEPARTMENTS;
+
+  return { campuses, departments };
+}
+
+export async function updateOrgOptionsAction(payload: {
+  campuses: string[];
+  departments: string[];
+}) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) throw new Error('Unauthorized');
+
+  const userRole = (session.user as any).role;
+  if (userRole !== 'SUPER_ADMIN' && userRole !== 'HR_ADMIN') {
+    throw new Error('Forbidden: Super Admin or HR Admin required');
+  }
+
+  const cleanCampuses = Array.from(
+    new Set(payload.campuses.map((c) => c.trim()).filter((c) => c.length > 0))
+  );
+  const cleanDepartments = Array.from(
+    new Set(payload.departments.map((d) => d.trim()).filter((d) => d.length > 0))
+  );
+
+  if (cleanCampuses.length === 0) {
+    throw new Error('You must have at least one campus option.');
+  }
+  if (cleanDepartments.length === 0) {
+    throw new Error('You must have at least one department option.');
+  }
+
+  await prisma.systemConfig.upsert({
+    where: { id: 'singleton' },
+    update: {
+      campusOptions: cleanCampuses,
+      departmentOptions: cleanDepartments,
+    },
+    create: {
+      id: 'singleton',
+      campusOptions: cleanCampuses,
+      departmentOptions: cleanDepartments,
+    },
+  });
+
+  await logAudit({
+    userId: (session.user as any).id,
+    userEmail: session.user.email,
+    userName: (session.user as any).fullName || session.user.name,
+    action: 'ORG_OPTIONS_UPDATED',
+    entityType: 'SystemConfig',
+    entityId: 'singleton',
+    diffData: {
+      campusCount: cleanCampuses.length,
+      departmentCount: cleanDepartments.length,
+    },
+  });
+
+  revalidatePath('/admin/staff');
+  return { success: true, campuses: cleanCampuses, departments: cleanDepartments };
+}
+

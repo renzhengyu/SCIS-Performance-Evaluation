@@ -215,5 +215,7 @@ model SystemConfig {
   simulatedDate         DateTime?
   activeSchoolYearId    String?
   standardJdFooterText  String      @default("Shanghai Community International School is committed to safeguarding and promoting the welfare of children. All employees must pass comprehensive criminal record checks.") @db.Text
+  campusOptions         Json?       // array of string names
+  departmentOptions     Json?       // array of string names
   updatedAt             DateTime    @updatedAt
 }

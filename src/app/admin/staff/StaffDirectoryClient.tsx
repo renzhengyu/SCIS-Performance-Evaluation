@@ -6,16 +6,19 @@ import {
   createStaffProfileAction,
   deleteStaffProfileAction,
 } from './actions';
-import { Users, UserPlus, Edit, Search, CheckCircle2, Shield, X, Trash2 } from 'lucide-react';
+import { Users, UserPlus, Edit, Search, CheckCircle2, Shield, X, Trash2, Settings } from 'lucide-react';
 import { Role } from '@prisma/client';
 import ImpersonateButton from '@/components/ImpersonateButton';
 import { useRouter } from 'next/navigation';
+import OrgOptionsModal from './OrgOptionsModal';
 
 interface StaffDirectoryClientProps {
   staffList: any[];
   allJDs: { id: string; title: string }[];
   allSupervisors: { id: string; fullName: string; email: string }[];
   allDeptHeads: { id: string; fullName: string; email: string }[];
+  initialCampuses?: string[];
+  initialDepartments?: string[];
 }
 
 export default function StaffDirectoryClient({
@@ -23,6 +26,8 @@ export default function StaffDirectoryClient({
   allJDs,
   allSupervisors,
   allDeptHeads,
+  initialCampuses,
+  initialDepartments,
 }: StaffDirectoryClientProps) {
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState('');
@@ -31,11 +36,39 @@ export default function StaffDirectoryClient({
   const [isSaving, setIsSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  const [campuses, setCampuses] = useState<string[]>(
+    initialCampuses && initialCampuses.length > 0
+      ? initialCampuses
+      : ['Systemwide', 'Hongqiao Campus', 'Hongqiao ECE', 'Pudong Campus']
+  );
+  const [departments, setDepartments] = useState<string[]>(
+    initialDepartments && initialDepartments.length > 0
+      ? initialDepartments
+      : [
+          'Technology and Innovation',
+          'Early Childhood Education (ECE)',
+          'Lower School / Primary',
+          'Upper School / Secondary',
+          'Student Support Services',
+          'Operations & Facilities',
+          'Human Resources',
+          'Finance & Business Office',
+          'Athletics & Activities',
+          'Admissions & Marketing',
+          'General Administration',
+        ]
+  );
+
+  const handleOptionsUpdated = (newCampuses: string[], newDepts: string[]) => {
+    setCampuses(newCampuses);
+    setDepartments(newDepts);
+  };
+
   // Form state
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
-  const [campus, setCampus] = useState('Systemwide');
-  const [department, setDepartment] = useState('Technology and Innovation');
+  const [campus, setCampus] = useState(campuses[0] || 'Systemwide');
+  const [department, setDepartment] = useState(departments[0] || 'Technology and Innovation');
   const [jobDescriptionId, setJobDescriptionId] = useState('');
   const [supervisorId, setSupervisorId] = useState('');
   const [deptHeadId, setDeptHeadId] = useState('');
@@ -59,8 +92,8 @@ export default function StaffDirectoryClient({
     setIsCreating(true);
     setFullName('');
     setEmail('');
-    setCampus('Systemwide');
-    setDepartment('General');
+    setCampus(campuses[0] || 'Systemwide');
+    setDepartment(departments[0] || 'Technology and Innovation');
     setJobDescriptionId('');
     setSupervisorId('');
     setDeptHeadId('');
@@ -145,14 +178,22 @@ export default function StaffDirectoryClient({
           />
         </div>
 
-        <button
-          type="button"
-          onClick={openCreateModal}
-          className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 rounded-lg shadow transition cursor-pointer"
-        >
-          <UserPlus className="w-4 h-4" />
-          <span>Add Staff Member</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <OrgOptionsModal
+            initialCampuses={campuses}
+            initialDepartments={departments}
+            onOptionsUpdated={handleOptionsUpdated}
+          />
+
+          <button
+            type="button"
+            onClick={openCreateModal}
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 rounded-lg shadow transition cursor-pointer"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>Add Staff Member</span>
+          </button>
+        </div>
       </div>
 
       {/* Staff Table */}
@@ -272,27 +313,56 @@ export default function StaffDirectoryClient({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Campus</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Campus *</label>
                   <select
                     value={campus}
                     onChange={(e) => setCampus(e.target.value)}
-                    className="w-full border border-slate-300 rounded p-2"
+                    className="w-full border border-slate-300 rounded p-2 bg-white focus:ring-1 focus:ring-blue-500 font-medium"
                   >
-                    <option value="Systemwide">Systemwide</option>
-                    <option value="Hongqiao Campus">Hongqiao Campus</option>
-                    <option value="Pudong Campus">Pudong Campus</option>
+                    {campus && !campuses.includes(campus) && (
+                      <option value={campus}>{campus}</option>
+                    )}
+                    {campuses.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Department</label>
-                  <input
-                    type="text"
+                  <label className="block font-semibold text-slate-700 mb-1">Department *</label>
+                  <select
                     value={department}
                     onChange={(e) => setDepartment(e.target.value)}
-                    placeholder="e.g. Technology and Innovation"
-                    className="w-full border border-slate-300 rounded p-2"
-                  />
+                    className="w-full border border-slate-300 rounded p-2 bg-white focus:ring-1 focus:ring-blue-500 font-medium"
+                  >
+                    {department && !departments.includes(department) && (
+                      <option value={department}>{department}</option>
+                    )}
+                    {departments.map((d) => (
+                      <option key={d} value={d}>
+                        {d}
+                      </option>
+                    ))}
+                  </select>
                 </div>
+              </div>
+
+              <div className="flex items-center justify-end -mt-1">
+                <OrgOptionsModal
+                  initialCampuses={campuses}
+                  initialDepartments={departments}
+                  onOptionsUpdated={handleOptionsUpdated}
+                  triggerButton={
+                    <button
+                      type="button"
+                      className="text-[11px] font-semibold text-blue-900 hover:text-blue-700 hover:underline cursor-pointer flex items-center gap-1"
+                    >
+                      <Settings className="w-3 h-3 text-blue-800" />
+                      <span>Configure Campuses & Departments</span>
+                    </button>
+                  }
+                />
               </div>
 
               <div>
