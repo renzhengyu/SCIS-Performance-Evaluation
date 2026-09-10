@@ -1,5 +1,4 @@
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { getEffectiveSessionUser } from '@/lib/impersonate-actions';
 import { redirect, notFound } from 'next/navigation';
 import { prisma } from '@/lib/db';
 import { getEffectiveDate, calculatePhase } from '@/lib/date-service';
@@ -11,8 +10,8 @@ export default async function EvaluationDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) {
+  const effectiveSession = await getEffectiveSessionUser();
+  if (!effectiveSession?.user?.email) {
     redirect('/auth/signin');
   }
 
@@ -44,17 +43,27 @@ export default async function EvaluationDetailPage({
     notFound();
   }
 
-  const userEmail = session.user.email.toLowerCase();
+  const user = effectiveSession.user;
+  const staffProfile = effectiveSession.staffProfile;
+  const userEmail = user.email.toLowerCase();
   const isStaff = evaluation.staffProfile.email.toLowerCase() === userEmail;
   const isSupervisor = evaluation.supervisor?.email.toLowerCase() === userEmail;
   const isDeptHead = evaluation.deptHead?.email.toLowerCase() === userEmail;
-  const userRole = (session.user as any).role;
+  const userRole = user.role;
   const isAdmin = userRole === 'SUPER_ADMIN' || userRole === 'HR_ADMIN';
 
   // Access control: only involved parties can view
   if (!isStaff && !isSupervisor && !isDeptHead && !isAdmin) {
     redirect('/dashboard');
   }
+
+  const impersonationInfo = effectiveSession.isImpersonating && effectiveSession.realUser
+    ? {
+        targetName: staffProfile?.fullName || user.name || user.email,
+        targetEmail: staffProfile?.email || user.email,
+        realUserName: effectiveSession.realUser.name || effectiveSession.realUser.email,
+      }
+    : null;
 
   const { date: effectiveDate, isSimulated } = await getEffectiveDate();
   const phaseInfo = calculatePhase(evaluation.schoolYear, effectiveDate, isSimulated);
@@ -75,6 +84,7 @@ export default async function EvaluationDetailPage({
           effectiveDate: phaseInfo.effectiveDate.toISOString(),
           isSimulationMode: phaseInfo.isSimulationMode,
         }}
+        impersonationInfo={impersonationInfo}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -88,10 +98,10 @@ export default async function EvaluationDetailPage({
             isSimulationMode: phaseInfo.isSimulationMode,
           }}
           currentUser={{
-            id: (session.user as any).id,
-            email: session.user.email,
+            id: user.id,
+            email: user.email,
             role: userRole,
-            fullName: (session.user as any).fullName || session.user.name || '',
+            fullName: staffProfile?.fullName || user.name || '',
           }}
           availableJDResponsibilities={availableJDResponsibilities}
         />

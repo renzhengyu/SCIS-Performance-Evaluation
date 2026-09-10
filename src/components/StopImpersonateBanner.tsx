@@ -32,7 +32,7 @@ export default function StopImpersonateBanner({
   };
 
   return (
-    <div className="bg-amber-500 text-slate-950 px-4 py-2 text-xs font-bold flex items-center justify-between shadow-md sticky top-0 z-50">
+    <div className="bg-amber-500 text-slate-950 px-4 py-2 text-xs font-bold flex items-center justify-between shadow-md sticky top-0 z-50 print:hidden">
       <div className="flex items-center gap-2">
         <Eye className="w-4 h-4 animate-pulse" />
         <span>

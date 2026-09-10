@@ -50,13 +50,36 @@ export default function EvaluationForm({
   // Role permissions
   const isStaff = evaluation.staffProfile.email.toLowerCase() === currentUser.email.toLowerCase();
   const isSupervisor = evaluation.supervisor?.email.toLowerCase() === currentUser.email.toLowerCase();
+  const isDeptHead = evaluation.deptHead?.email.toLowerCase() === currentUser.email.toLowerCase();
   const isAdmin = currentUser.role === 'SUPER_ADMIN' || currentUser.role === 'HR_ADMIN';
-  const canEditGeneral = isStaff || isSupervisor || isAdmin;
 
-  // Phase editability
-  const isPhase1Editable = isAdmin || (currentPhaseInfo.isOpen && currentPhaseInfo.phase === 1 && canEditGeneral);
-  const isPhase2Editable = isAdmin || (currentPhaseInfo.isOpen && currentPhaseInfo.phase === 2 && canEditGeneral);
-  const isPhase3Editable = isAdmin || (currentPhaseInfo.isOpen && currentPhaseInfo.phase === 3 && canEditGeneral);
+  const canEmployeeEdit = isStaff || isAdmin;
+  const canSupervisorEdit = isSupervisor || isDeptHead || isAdmin;
+
+  // Strict Phase Active Checks
+  const isPhase1Active = (currentPhaseInfo.isOpen && currentPhaseInfo.phase === 1) || (isAdmin && currentPhaseInfo.phase === 1);
+  const isPhase2Active = (currentPhaseInfo.isOpen && currentPhaseInfo.phase === 2) || (isAdmin && currentPhaseInfo.phase === 2);
+  const isPhase3Active = (currentPhaseInfo.isOpen && currentPhaseInfo.phase === 3) || (isAdmin && currentPhaseInfo.phase === 3);
+
+  // Workflow status
+  const isSelfEvaluationSubmitted = evaluation.status === 'PHASE3_SELF_COMPLETED' || evaluation.status === 'COMPLETED';
+  const isFinalCompleted = evaluation.status === 'COMPLETED';
+
+  // Phase 1 permissions: Supervisor sets responsibilities & weights; either can draft goals
+  const isPhase1Editable = canSupervisorEdit && isPhase1Active;
+  const isGoalsEditable = (canEmployeeEdit || canSupervisorEdit) && isPhase1Active;
+
+  // Phase 2 permissions: Mid-Year Review
+  const isPhase2EmployeeEditable = canEmployeeEdit && isPhase2Active;
+  const isPhase2SupervisorEditable = canSupervisorEdit && isPhase2Active;
+
+  // Phase 3 permissions: Scoring & Final Review
+  const isPhase3SelfEditable = canEmployeeEdit && isPhase3Active && !isSelfEvaluationSubmitted;
+  const isPhase3SupervisorEditable = canSupervisorEdit && isPhase3Active && (isSelfEvaluationSubmitted || isAdmin) && !isFinalCompleted;
+
+  // Section C permissions: Development
+  const isDevEmployeeEditable = canEmployeeEdit && (isPhase1Active || isPhase2Active || isPhase3Active);
+  const isDevSupervisorEditable = canSupervisorEdit && (isPhase1Active || isPhase2Active || isPhase3Active);
 
   // Phase 1 State: Responsibilities & Weights
   const initialResponsibilities = evaluation.items
@@ -128,7 +151,16 @@ export default function EvaluationForm({
   const liveTotalScoreSelf = totalPartASelf + totalPartBSelf;
   const liveTotalScoreSupervisor = totalPartASupervisor + totalPartBSupervisor;
 
-  const currentGrade = calculateGrade(liveTotalScoreSupervisor);
+  // Grade is only valid when supervisor has actually evaluated:
+  const hasSupervisorScores =
+    selectedResponsibilities.some((r) => r.scoreSupervisor !== null && r.scoreSupervisor !== undefined) ||
+    skillItems.some((s: any) => s.scoreSupervisor !== null && s.scoreSupervisor !== undefined);
+  const isSupervisorEvaluationDone =
+    (evaluation.status === 'COMPLETED' || (isSupervisor || isAdmin)) &&
+    hasSupervisorScores &&
+    liveTotalScoreSupervisor > 0;
+
+  const currentGrade = isSupervisorEvaluationDone ? calculateGrade(liveTotalScoreSupervisor) : null;
 
   // Handlers for Phase 1
   const toggleSelectDuty = (dutyText: string) => {
@@ -154,18 +186,32 @@ export default function EvaluationForm({
   };
 
   const handleScoreChange = (
-    itemId: string,
+    itemIndex: number,
     type: 'RESPONSIBILITY' | 'SKILL',
     field: 'scoreSelf' | 'scoreSupervisor',
-    value: number
+    value: number | string
   ) => {
+    const numVal = typeof value === 'string' ? (value === '' ? null : parseInt(value, 10)) : value;
+
     if (type === 'RESPONSIBILITY') {
       setSelectedResponsibilities((prev) =>
-        prev.map((item) => (item.id === itemId ? { ...item, [field]: value } : item))
+        prev.map((item, idx) => {
+          if (idx === itemIndex) {
+            const clamped = numVal === null || isNaN(numVal) ? null : Math.max(0, Math.min(item.weight, numVal));
+            return { ...item, [field]: clamped };
+          }
+          return item;
+        })
       );
     } else {
       setSkillItems((prev: any[]) =>
-        prev.map((item: any) => (item.id === itemId ? { ...item, [field]: value } : item))
+        prev.map((item: any, idx: number) => {
+          if (idx === itemIndex) {
+            const clamped = numVal === null || isNaN(numVal) ? null : Math.max(0, Math.min(5, numVal));
+            return { ...item, [field]: clamped };
+          }
+          return item;
+        })
       );
     }
   };
@@ -233,16 +279,16 @@ export default function EvaluationForm({
       setSuccessMessage(null);
 
       const allScores = [
-        ...selectedResponsibilities
-          .filter((r) => r.id)
-          .map((r) => ({
-            id: r.id!,
-            scoreSelf: r.scoreSelf !== null && r.scoreSelf !== undefined ? Number(r.scoreSelf) : null,
-            scoreSupervisor:
-              r.scoreSupervisor !== null && r.scoreSupervisor !== undefined ? Number(r.scoreSupervisor) : null,
-          })),
+        ...selectedResponsibilities.map((r) => ({
+          id: r.id,
+          title: r.title,
+          scoreSelf: r.scoreSelf !== null && r.scoreSelf !== undefined ? Number(r.scoreSelf) : null,
+          scoreSupervisor:
+            r.scoreSupervisor !== null && r.scoreSupervisor !== undefined ? Number(r.scoreSupervisor) : null,
+        })),
         ...skillItems.map((s: any) => ({
           id: s.id,
+          title: s.title,
           scoreSelf: s.scoreSelf !== null && s.scoreSelf !== undefined ? Number(s.scoreSelf) : null,
           scoreSupervisor:
             s.scoreSupervisor !== null && s.scoreSupervisor !== undefined ? Number(s.scoreSupervisor) : null,
@@ -253,6 +299,10 @@ export default function EvaluationForm({
         itemScores: allScores,
         finalCommentsEmployee,
         finalCommentsSupervisor,
+        devRequestEmployee,
+        devRequestSupervisor,
+        otherCommentsEmployee,
+        otherCommentsSupervisor,
         isSelfSubmission: submissionType === 'self',
         isFinalSupervisorSubmission: submissionType === 'supervisor',
       });
@@ -494,7 +544,7 @@ export default function EvaluationForm({
                     </td>
                     {/* Self Score */}
                     <td className="py-3 px-3 text-center">
-                      {isPhase3Editable && (isStaff || isAdmin) ? (
+                      {isPhase3SelfEditable ? (
                         <input
                           type="number"
                           min={0}
@@ -503,23 +553,23 @@ export default function EvaluationForm({
                           placeholder={`0-${item.weight}`}
                           onChange={(e) =>
                             handleScoreChange(
-                              item.id!,
+                              index,
                               'RESPONSIBILITY',
                               'scoreSelf',
-                              parseInt(e.target.value) || 0
+                              e.target.value
                             )
                           }
-                          className="w-16 text-center border border-slate-300 rounded px-1.5 py-1 text-xs font-semibold"
+                          className="w-16 text-center border border-slate-300 rounded px-1.5 py-1 text-xs font-semibold focus:ring-1 focus:ring-blue-500"
                         />
                       ) : (
                         <span className="font-semibold text-slate-700">
-                          {item.scoreSelf ?? '--'}
+                          {item.scoreSelf !== null && item.scoreSelf !== undefined ? item.scoreSelf : '--'}
                         </span>
                       )}
                     </td>
                     {/* Supervisor Score */}
                     <td className="py-3 px-3 text-center">
-                      {isPhase3Editable && (isSupervisor || isAdmin) ? (
+                      {isPhase3SupervisorEditable ? (
                         <input
                           type="number"
                           min={0}
@@ -528,17 +578,17 @@ export default function EvaluationForm({
                           placeholder={`0-${item.weight}`}
                           onChange={(e) =>
                             handleScoreChange(
-                              item.id!,
+                              index,
                               'RESPONSIBILITY',
                               'scoreSupervisor',
-                              parseInt(e.target.value) || 0
+                              e.target.value
                             )
                           }
-                          className="w-16 text-center border border-slate-300 rounded px-1.5 py-1 text-xs font-semibold"
+                          className="w-16 text-center border border-slate-300 rounded px-1.5 py-1 text-xs font-semibold focus:ring-1 focus:ring-blue-500"
                         />
                       ) : (
                         <span className="font-semibold text-slate-700">
-                          {item.scoreSupervisor ?? '--'}
+                          {item.scoreSupervisor !== null && item.scoreSupervisor !== undefined ? item.scoreSupervisor : '--'}
                         </span>
                       )}
                     </td>
@@ -616,7 +666,7 @@ export default function EvaluationForm({
                     </td>
                     {/* Self Score */}
                     <td className="py-3 px-3 text-center">
-                      {isPhase3Editable && (isStaff || isAdmin) ? (
+                      {isPhase3SelfEditable ? (
                         <input
                           type="number"
                           min={1}
@@ -625,10 +675,10 @@ export default function EvaluationForm({
                           placeholder="1-5"
                           onChange={(e) =>
                             handleScoreChange(
-                              skill.id,
+                              index,
                               'SKILL',
                               'scoreSelf',
-                              parseInt(e.target.value) || 0
+                              e.target.value
                             )
                           }
                           className="w-16 text-center border border-slate-300 rounded px-1.5 py-1 text-xs font-semibold"
@@ -641,7 +691,7 @@ export default function EvaluationForm({
                     </td>
                     {/* Supervisor Score */}
                     <td className="py-3 px-3 text-center">
-                      {isPhase3Editable && (isSupervisor || isAdmin) ? (
+                      {isPhase3SupervisorEditable ? (
                         <input
                           type="number"
                           min={1}
@@ -650,10 +700,10 @@ export default function EvaluationForm({
                           placeholder="1-5"
                           onChange={(e) =>
                             handleScoreChange(
-                              skill.id,
+                              index,
                               'SKILL',
                               'scoreSupervisor',
-                              parseInt(e.target.value) || 0
+                              e.target.value
                             )
                           }
                           className="w-16 text-center border border-slate-300 rounded px-1.5 py-1 text-xs font-semibold"
@@ -723,11 +773,11 @@ export default function EvaluationForm({
             <div className="text-xl font-bold mt-0.5">
               Total Score (Part A + Part B):{' '}
               <span className="font-mono text-2xl text-amber-300">
-                {liveTotalScoreSupervisor} / 100
+                {currentGrade ? `${liveTotalScoreSupervisor} / 100` : '-- / 100'}
               </span>
             </div>
             <div className="text-xs text-slate-300 mt-1">
-              (Employee Self Total: {liveTotalScoreSelf} / 100)
+              (Employee Self Total: {liveTotalScoreSelf > 0 ? `${liveTotalScoreSelf} / 100` : '--'})
             </div>
           </div>
 
@@ -735,13 +785,15 @@ export default function EvaluationForm({
             <div className="text-right">
               <div className="text-[11px] uppercase font-bold text-slate-300">Assessment Grade</div>
               <div className="text-base font-bold text-white">
-                Grade {currentGrade.grade}: {currentGrade.label}
+                {currentGrade ? `Grade ${currentGrade.grade}: ${currentGrade.label}` : 'Pending Supervisor Scoring'}
               </div>
             </div>
             <span
-              className={`w-12 h-12 rounded-xl flex items-center justify-center text-xl font-black shadow ${currentGrade.badgeClass}`}
+              className={`w-12 h-12 rounded-xl flex items-center justify-center text-xl font-black shadow ${
+                currentGrade ? currentGrade.badgeClass : 'bg-slate-700 text-slate-300 border border-slate-600'
+              }`}
             >
-              {currentGrade.grade}
+              {currentGrade ? currentGrade.grade : '--'}
             </span>
           </div>
         </div>
@@ -771,7 +823,7 @@ export default function EvaluationForm({
               </label>
               <textarea
                 rows={3}
-                disabled={!isPhase1Editable && !isPhase2Editable && !isAdmin}
+                disabled={!isDevEmployeeEditable}
                 value={devRequestEmployee}
                 onChange={(e) => setDevRequestEmployee(e.target.value)}
                 placeholder="Specific training, workshops, or skills you would like to develop..."
@@ -784,7 +836,7 @@ export default function EvaluationForm({
               </label>
               <textarea
                 rows={3}
-                disabled={!isPhase1Editable && !isPhase2Editable && !isAdmin}
+                disabled={!isDevEmployeeEditable}
                 value={otherCommentsEmployee}
                 onChange={(e) => setOtherCommentsEmployee(e.target.value)}
                 placeholder="Additional comments regarding support or resources needed..."
@@ -803,7 +855,7 @@ export default function EvaluationForm({
               </label>
               <textarea
                 rows={3}
-                disabled={!isPhase1Editable && !isPhase2Editable && !isAdmin}
+                disabled={!isDevSupervisorEditable}
                 value={devRequestSupervisor}
                 onChange={(e) => setDevRequestSupervisor(e.target.value)}
                 placeholder="Recommended courses, coaching, or institutional opportunities..."
@@ -816,7 +868,7 @@ export default function EvaluationForm({
               </label>
               <textarea
                 rows={3}
-                disabled={!isPhase1Editable && !isPhase2Editable && !isAdmin}
+                disabled={!isDevSupervisorEditable}
                 value={otherCommentsSupervisor}
                 onChange={(e) => setOtherCommentsSupervisor(e.target.value)}
                 placeholder="Additional notes from supervisor..."
@@ -848,7 +900,7 @@ export default function EvaluationForm({
               </span>
               <textarea
                 rows={2}
-                disabled={!isPhase1Editable && !isAdmin}
+                disabled={!isGoalsEditable}
                 value={g.description}
                 onChange={(e) => {
                   const updated = [...goals];
@@ -883,7 +935,7 @@ export default function EvaluationForm({
             </label>
             <textarea
               rows={4}
-              disabled={!isPhase2Editable && !isAdmin}
+              disabled={!isPhase2EmployeeEditable}
               value={midYearEmployee}
               onChange={(e) => setMidYearEmployee(e.target.value)}
               placeholder="Reflections on goal progress achieved since start of year..."
@@ -897,7 +949,7 @@ export default function EvaluationForm({
             </label>
             <textarea
               rows={4}
-              disabled={!isPhase2Editable && !isAdmin}
+              disabled={!isPhase2SupervisorEditable}
               value={midYearSupervisor}
               onChange={(e) => setMidYearSupervisor(e.target.value)}
               placeholder="Constructive mid-year feedback and adjustments for second semester..."
@@ -927,7 +979,7 @@ export default function EvaluationForm({
             </label>
             <textarea
               rows={4}
-              disabled={!isPhase3Editable && !isAdmin}
+              disabled={!isPhase3SelfEditable}
               value={finalCommentsEmployee}
               onChange={(e) => setFinalCommentsEmployee(e.target.value)}
               placeholder="Summary of annual achievements, highlights, and growth..."
@@ -941,7 +993,7 @@ export default function EvaluationForm({
             </label>
             <textarea
               rows={4}
-              disabled={!isPhase3Editable && !isAdmin}
+              disabled={!isPhase3SupervisorEditable}
               value={finalCommentsSupervisor}
               onChange={(e) => setFinalCommentsSupervisor(e.target.value)}
               placeholder="Comprehensive summary of employee performance and leadership observations..."
@@ -969,6 +1021,9 @@ export default function EvaluationForm({
             {currentPhaseInfo.phase === 3 && (
               <span className="text-xs text-blue-900 font-bold bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
                 Phase 3 Active ({liveTotalScoreSupervisor}/100 pts)
+                {!isSelfEvaluationSubmitted && !isStaff && ' — Awaiting Employee Self-Evaluation'}
+                {isSelfEvaluationSubmitted && !isFinalCompleted && ' — Self-Evaluation Completed'}
+                {isFinalCompleted && ' — Completed'}
               </span>
             )}
             {!currentPhaseInfo.isOpen && (
@@ -1000,9 +1055,20 @@ export default function EvaluationForm({
                 </button>
               </>
             )}
+            {canEmployeeEdit && isPhase1Active && !canSupervisorEdit && (
+              <button
+                type="button"
+                disabled={isSaving}
+                onClick={() => handleSavePhase1(false)}
+                className="px-4 py-2 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 rounded-lg shadow transition disabled:opacity-50"
+              >
+                <Save className="w-3.5 h-3.5 inline mr-1" />
+                <span>Save Goals & Comments</span>
+              </button>
+            )}
 
             {/* Phase 2 Save / Submit */}
-            {isPhase2Editable && (
+            {(isPhase2EmployeeEditable || isPhase2SupervisorEditable) && (
               <>
                 <button
                   type="button"
@@ -1025,8 +1091,8 @@ export default function EvaluationForm({
               </>
             )}
 
-            {/* Phase 3 Save / Submit */}
-            {isPhase3Editable && (
+            {/* Phase 3 Employee Self-Evaluation Actions */}
+            {isPhase3SelfEditable && (
               <>
                 <button
                   type="button"
@@ -1035,28 +1101,41 @@ export default function EvaluationForm({
                   className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition disabled:opacity-50"
                 >
                   <Save className="w-3.5 h-3.5 inline mr-1" />
-                  <span>Save Scores</span>
+                  <span>Save Draft</span>
                 </button>
-                {isStaff && (
-                  <button
-                    type="button"
-                    disabled={isSaving}
-                    onClick={() => handleSavePhase3('self')}
-                    className="px-4 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-600 rounded-lg shadow transition disabled:opacity-50"
-                  >
-                    <span>Submit Self Evaluation</span>
-                  </button>
-                )}
-                {isSupervisor && (
-                  <button
-                    type="button"
-                    disabled={isSaving}
-                    onClick={() => handleSavePhase3('supervisor')}
-                    className="px-4 py-2 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 rounded-lg shadow transition disabled:opacity-50"
-                  >
-                    <span>Complete Final Evaluation</span>
-                  </button>
-                )}
+                <button
+                  type="button"
+                  disabled={isSaving}
+                  onClick={() => handleSavePhase3('self')}
+                  className="px-4 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-600 rounded-lg shadow transition disabled:opacity-50"
+                >
+                  <Send className="w-3.5 h-3.5 inline mr-1" />
+                  <span>Submit Self Evaluation</span>
+                </button>
+              </>
+            )}
+
+            {/* Phase 3 Supervisor Final Actions */}
+            {isPhase3SupervisorEditable && (
+              <>
+                <button
+                  type="button"
+                  disabled={isSaving}
+                  onClick={() => handleSavePhase3()}
+                  className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition disabled:opacity-50"
+                >
+                  <Save className="w-3.5 h-3.5 inline mr-1" />
+                  <span>Save Draft</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={isSaving}
+                  onClick={() => handleSavePhase3('supervisor')}
+                  className="px-4 py-2 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 rounded-lg shadow transition disabled:opacity-50"
+                >
+                  <Send className="w-3.5 h-3.5 inline mr-1" />
+                  <span>Complete Final Evaluation</span>
+                </button>
               </>
             )}
 
