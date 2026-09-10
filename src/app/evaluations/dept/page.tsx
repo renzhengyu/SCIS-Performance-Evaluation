@@ -130,13 +130,14 @@ export default async function DeptReviewsPage() {
                               <span>Inspect</span>
                               <ArrowRight className="w-3.5 h-3.5" />
                             </Link>
-                            <Link
+                            <a
                               href={`/api/evaluations/${ev.id}/pdf`}
                               target="_blank"
+                              rel="noopener noreferrer"
                               className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600 hover:text-slate-800 bg-slate-50 px-2 py-1.5 rounded border border-slate-200"
                             >
                               <Download className="w-3.5 h-3.5" />
-                            </Link>
+                            </a>
                           </>
                         ) : (
                           <span className="text-xs text-slate-400 italic">Not created yet</span>

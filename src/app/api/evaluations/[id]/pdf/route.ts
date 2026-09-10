@@ -68,6 +68,9 @@ export async function GET(
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-gpu',
+        '--no-proxy-server',
+        '--proxy-bypass-list=*',
+        '--disable-extensions',
         '--font-render-hinting=medium',
       ],
     });
@@ -76,8 +79,14 @@ export async function GET(
     try {
       const page = await browser.newPage();
       await page.setViewport({ width: 1200, height: 1600, deviceScaleFactor: 2 });
-      await page.goto(printUrl, { waitUntil: 'networkidle0', timeout: 30000 });
-      await page.evaluateHandle('document.fonts.ready');
+      await page.goto(printUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+      try {
+        await page.evaluateHandle('document.fonts.ready');
+      } catch {
+        // Fallback if font check fails
+      }
+      // Brief pause to allow CSS layout to settle
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
       pdfBuffer = await page.pdf({
         format: 'A4',

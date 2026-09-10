@@ -290,14 +290,15 @@ export default async function DashboardPage() {
                     <ArrowRight className="w-4 h-4" />
                   </Link>
 
-                  <Link
+                  <a
                     href={`/api/evaluations/${currentEvaluation.id}/pdf`}
                     target="_blank"
+                    rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg shadow-sm transition"
                   >
                     <Download className="w-4 h-4 text-slate-600" />
                     <span>Download 2-Page PDF</span>
-                  </Link>
+                  </a>
                 </>
               ) : (
                 <Link
