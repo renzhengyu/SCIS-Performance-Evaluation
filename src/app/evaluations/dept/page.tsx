@@ -21,6 +21,7 @@ export default async function DeptReviewsPage() {
         targetName: staffProfile?.fullName || effectiveSession.user.name || effectiveSession.user.email,
         targetEmail: staffProfile?.email || effectiveSession.user.email,
         realUserName: effectiveSession.realUser.name || effectiveSession.realUser.email,
+        targetRole: effectiveSession.user.role,
       }
     : null;
 
@@ -53,6 +54,8 @@ export default async function DeptReviewsPage() {
           effectiveDate: phaseInfo.effectiveDate.toISOString(),
           isSimulationMode: phaseInfo.isSimulationMode,
         }}
+        effectiveRole={effectiveSession.user.role}
+        effectiveName={staffProfile?.fullName || effectiveSession.user.name}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">

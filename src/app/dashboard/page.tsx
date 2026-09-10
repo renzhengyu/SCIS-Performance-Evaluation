@@ -34,6 +34,7 @@ export default async function DashboardPage() {
         targetName: staffProfile?.fullName || user.name || user.email,
         targetEmail: staffProfile?.email || user.email,
         realUserName: effectiveSession.realUser.name || effectiveSession.realUser.email,
+        targetRole: user.role,
       }
     : null;
 
@@ -100,6 +101,8 @@ export default async function DashboardPage() {
           effectiveDate: phaseInfo.effectiveDate.toISOString(),
           isSimulationMode: phaseInfo.isSimulationMode,
         }}
+        effectiveRole={user?.role}
+        effectiveName={staffProfile?.fullName || user?.name}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">

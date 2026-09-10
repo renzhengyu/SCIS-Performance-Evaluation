@@ -28,18 +28,37 @@ interface NavbarProps {
     targetName: string;
     targetEmail: string;
     realUserName: string;
+    targetRole?: string;
   } | null;
+  effectiveRole?: string | null;
+  effectiveName?: string | null;
 }
 
-export default function Navbar({ phaseInfo, impersonationInfo }: NavbarProps) {
+export default function Navbar({
+  phaseInfo,
+  impersonationInfo,
+  effectiveRole,
+  effectiveName,
+}: NavbarProps) {
   const { data: session } = useSession();
   const pathname = usePathname();
 
-  const userRole = (session?.user as any)?.role || 'STAFF';
+  const userRole =
+    effectiveRole ||
+    impersonationInfo?.targetRole ||
+    (session?.user as any)?.role ||
+    'STAFF';
   const isSuperAdmin = userRole === 'SUPER_ADMIN';
   const isHRAdmin = isSuperAdmin || userRole === 'HR_ADMIN';
   const isSupervisor = isHRAdmin || userRole === 'SUPERVISOR';
   const isDeptHead = isHRAdmin || userRole === 'DEPT_HEAD';
+
+  const displayName =
+    effectiveName ||
+    impersonationInfo?.targetName ||
+    (session?.user as any)?.fullName ||
+    session?.user?.name ||
+    session?.user?.email;
 
   const navLinks = [
     { href: '/dashboard', label: 'Dashboard', icon: School, show: true },
@@ -144,7 +163,7 @@ export default function Navbar({ phaseInfo, impersonationInfo }: NavbarProps) {
               <div className="flex items-center gap-3 pl-3 ml-2 border-l border-slate-200">
                 <div className="hidden sm:block text-right">
                   <div className="text-xs font-semibold text-slate-800 leading-tight">
-                    {(session.user as any).fullName || session.user.name || session.user.email}
+                    {displayName}
                   </div>
                   <div className="text-[10px] text-slate-500 flex items-center justify-end gap-1">
                     <span className="capitalize font-mono px-1 py-0.2 bg-slate-100 rounded text-slate-600">

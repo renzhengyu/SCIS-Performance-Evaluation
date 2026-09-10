@@ -13,6 +13,8 @@ import {
   Send,
   HelpCircle,
   Award,
+  Lock,
+  Unlock,
 } from 'lucide-react';
 import { SKILL_RUBRICS, calculateGrade } from '@/lib/scoring';
 import { savePhase1Action, savePhase2Action, savePhase3Action } from '@/app/evaluations/[id]/actions';
@@ -65,8 +67,8 @@ export default function EvaluationForm({
   const isSelfEvaluationSubmitted = evaluation.status === 'PHASE3_SELF_COMPLETED' || evaluation.status === 'COMPLETED';
   const isFinalCompleted = evaluation.status === 'COMPLETED';
 
-  // Phase 1 permissions: Supervisor sets responsibilities & weights; either can draft goals
-  const isPhase1Editable = canSupervisorEdit && isPhase1Active;
+  // Phase 1 permissions: Both employee and supervisor can select duties & adjust weights; supervisor can lock duties
+  const isPhase1Editable = (canEmployeeEdit || canSupervisorEdit) && isPhase1Active;
   const isGoalsEditable = (canEmployeeEdit || canSupervisorEdit) && isPhase1Active;
 
   // Phase 2 permissions: Mid-Year Review
@@ -90,6 +92,7 @@ export default function EvaluationForm({
       weight: i.weight || 10,
       scoreSelf: i.scoreSelf,
       scoreSupervisor: i.scoreSupervisor,
+      isLocked: Boolean(i.isLocked),
     }));
 
   const [selectedResponsibilities, setSelectedResponsibilities] = useState<{
@@ -98,6 +101,7 @@ export default function EvaluationForm({
     weight: number;
     scoreSelf?: number | null;
     scoreSupervisor?: number | null;
+    isLocked?: boolean;
   }[]>(initialResponsibilities.length > 0 ? initialResponsibilities : []);
 
   // Phase 1 State: Goals
@@ -165,7 +169,12 @@ export default function EvaluationForm({
   // Handlers for Phase 1
   const toggleSelectDuty = (dutyText: string) => {
     if (!isPhase1Editable) return;
-    if (selectedResponsibilities.some((r) => r.title === dutyText)) {
+    const existing = selectedResponsibilities.find((r) => r.title === dutyText);
+    if (existing) {
+      if (existing.isLocked && !canSupervisorEdit) {
+        alert('This responsibility has been locked as mandatory by your supervisor and cannot be removed.');
+        return;
+      }
       setSelectedResponsibilities(selectedResponsibilities.filter((r) => r.title !== dutyText));
     } else {
       if (selectedResponsibilities.length >= 8) {
@@ -174,12 +183,27 @@ export default function EvaluationForm({
       }
       setSelectedResponsibilities([
         ...selectedResponsibilities,
-        { title: dutyText, weight: 10, scoreSelf: null, scoreSupervisor: null },
+        { title: dutyText, weight: 10, scoreSelf: null, scoreSupervisor: null, isLocked: false },
       ]);
     }
   };
 
+  const toggleLockDuty = (dutyTitle: string) => {
+    if (!canSupervisorEdit || !isPhase1Active) return;
+    setSelectedResponsibilities((prev) =>
+      prev.map((item) =>
+        item.title === dutyTitle ? { ...item, isLocked: !item.isLocked } : item
+      )
+    );
+  };
+
   const handleWeightChange = (title: string, weight: number) => {
+    if (!isPhase1Editable) return;
+    const item = selectedResponsibilities.find((r) => r.title === title);
+    if (item?.isLocked && !canSupervisorEdit) {
+      alert('This responsibility has been locked as mandatory by your supervisor. Its weight cannot be changed.');
+      return;
+    }
     setSelectedResponsibilities((prev) =>
       prev.map((item) => (item.title === title ? { ...item, weight: Math.max(1, Math.min(20, weight)) } : item))
     );
@@ -227,6 +251,7 @@ export default function EvaluationForm({
         responsibilities: selectedResponsibilities.map((r) => ({
           title: r.title,
           weight: Number(r.weight),
+          isLocked: Boolean(r.isLocked),
         })),
         goals: goals.filter((g) => g.description.trim() !== ''),
         devRequestEmployee,
@@ -379,7 +404,7 @@ export default function EvaluationForm({
               className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-800 bg-white hover:bg-slate-100 rounded-lg shadow-sm transition"
             >
               <Download className="w-4 h-4 text-blue-900" />
-              <span>Download Signed A4 PDF</span>
+              <span>Download PDF version</span>
             </a>
 
             <Link
@@ -474,25 +499,43 @@ export default function EvaluationForm({
             </p>
             <div className="grid grid-cols-1 gap-2 max-h-60 overflow-y-auto pr-2">
               {availableJDResponsibilities.map((duty, idx) => {
-                const isSelected = selectedResponsibilities.some((r) => r.title === duty);
+                const selectedItem = selectedResponsibilities.find((r) => r.title === duty);
+                const isSelected = Boolean(selectedItem);
+                const isLocked = Boolean(selectedItem?.isLocked);
                 return (
                   <button
                     key={idx}
                     type="button"
                     onClick={() => toggleSelectDuty(duty)}
-                    className={`text-left p-2.5 rounded-lg border text-xs transition flex items-start gap-2.5 cursor-pointer ${
+                    title={
+                      isLocked && !canSupervisorEdit
+                        ? 'Mandatory duty locked by supervisor (cannot be removed)'
+                        : isSelected
+                        ? 'Click to deselect duty'
+                        : 'Click to select duty'
+                    }
+                    className={`text-left p-2.5 rounded-lg border text-xs transition flex items-center justify-between gap-2.5 cursor-pointer ${
                       isSelected
-                        ? 'bg-blue-50 border-blue-300 text-blue-950 font-medium'
+                        ? isLocked
+                          ? 'bg-amber-50/90 border-amber-300 text-amber-950 font-medium'
+                          : 'bg-blue-50 border-blue-300 text-blue-950 font-medium'
                         : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
                     }`}
                   >
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      readOnly
-                      className="mt-0.5 rounded text-blue-900 pointer-events-none"
-                    />
-                    <span>{duty}</span>
+                    <div className="flex items-start gap-2.5">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        readOnly
+                        className="mt-0.5 rounded text-blue-900 pointer-events-none"
+                      />
+                      <span>{duty}</span>
+                    </div>
+                    {isLocked && (
+                      <span className="flex-shrink-0 inline-flex items-center gap-1 text-[10px] uppercase font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded border border-amber-300">
+                        <Lock className="w-3 h-3" /> Mandatory
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -520,80 +563,167 @@ export default function EvaluationForm({
                   </td>
                 </tr>
               ) : (
-                selectedResponsibilities.map((item, index) => (
-                  <tr key={index} className="hover:bg-slate-50/70">
-                    <td className="py-3 px-3 text-center font-bold text-slate-400">
-                      {index + 1}
-                    </td>
-                    <td className="py-3 px-4 text-slate-800 text-xs font-medium">
-                      {item.title}
-                    </td>
-                    <td className="py-3 px-3 text-center">
-                      {isPhase1Editable ? (
-                        <input
-                          type="number"
-                          min={1}
-                          max={20}
-                          value={item.weight}
-                          onChange={(e) => handleWeightChange(item.title, parseInt(e.target.value) || 0)}
-                          className="w-16 text-center border border-slate-300 rounded px-1.5 py-1 text-xs font-semibold focus:ring-1 focus:ring-blue-500"
-                        />
-                      ) : (
-                        <span className="font-bold text-slate-800">{item.weight}</span>
-                      )}
-                    </td>
-                    {/* Self Score */}
-                    <td className="py-3 px-3 text-center">
-                      {isPhase3SelfEditable ? (
-                        <input
-                          type="number"
-                          min={0}
-                          max={item.weight}
-                          value={item.scoreSelf ?? ''}
-                          placeholder={`0-${item.weight}`}
-                          onChange={(e) =>
-                            handleScoreChange(
-                              index,
-                              'RESPONSIBILITY',
-                              'scoreSelf',
-                              e.target.value
-                            )
-                          }
-                          className="w-16 text-center border border-slate-300 rounded px-1.5 py-1 text-xs font-semibold focus:ring-1 focus:ring-blue-500"
-                        />
-                      ) : (
-                        <span className="font-semibold text-slate-700">
-                          {item.scoreSelf !== null && item.scoreSelf !== undefined ? item.scoreSelf : '--'}
-                        </span>
-                      )}
-                    </td>
-                    {/* Supervisor Score */}
-                    <td className="py-3 px-3 text-center">
-                      {isPhase3SupervisorEditable ? (
-                        <input
-                          type="number"
-                          min={0}
-                          max={item.weight}
-                          value={item.scoreSupervisor ?? ''}
-                          placeholder={`0-${item.weight}`}
-                          onChange={(e) =>
-                            handleScoreChange(
-                              index,
-                              'RESPONSIBILITY',
-                              'scoreSupervisor',
-                              e.target.value
-                            )
-                          }
-                          className="w-16 text-center border border-slate-300 rounded px-1.5 py-1 text-xs font-semibold focus:ring-1 focus:ring-blue-500"
-                        />
-                      ) : (
-                        <span className="font-semibold text-slate-700">
-                          {item.scoreSupervisor !== null && item.scoreSupervisor !== undefined ? item.scoreSupervisor : '--'}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))
+                selectedResponsibilities.map((item, index) => {
+                  const isWeightDisabled = !isPhase1Editable || (item.isLocked && !canSupervisorEdit);
+                  const weightDisabledReason = !isPhase1Active
+                    ? 'Weights can only be edited during Phase 1.'
+                    : item.isLocked && !canSupervisorEdit
+                    ? 'Locked by supervisor as a mandatory duty (weight cannot be modified).'
+                    : !isPhase1Editable
+                    ? 'You do not have permission to edit responsibilities.'
+                    : null;
+
+                  const selfScoreDisabledReason = !isPhase3Active
+                    ? 'Phase 3 is not active. Self-evaluation scores can only be entered during Phase 3.'
+                    : !canEmployeeEdit
+                    ? 'Self-evaluation scores can only be entered by the employee.'
+                    : isSelfEvaluationSubmitted
+                    ? 'Self-evaluation scores have already been submitted and locked.'
+                    : null;
+
+                  const supervisorScoreDisabledReason = !isPhase3Active
+                    ? 'Phase 3 is not active. Supervisor scores can only be entered during Phase 3.'
+                    : !canSupervisorEdit
+                    ? 'Only the supervisor can enter official evaluation scores.'
+                    : !isSelfEvaluationSubmitted && !isAdmin
+                    ? 'Awaiting employee self-evaluation submission before supervisor scoring opens.'
+                    : isFinalCompleted
+                    ? 'Evaluation has been completed and locked.'
+                    : null;
+
+                  return (
+                    <tr key={index} className="hover:bg-slate-50/70">
+                      <td className="py-3 px-3 text-center font-bold text-slate-400">
+                        {index + 1}
+                      </td>
+                      <td className="py-3 px-4 text-slate-800 text-xs font-medium">
+                        <div className="flex items-start justify-between gap-3">
+                          <span className="leading-relaxed">{item.title}</span>
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            {canSupervisorEdit && isPhase1Active && (
+                              <button
+                                type="button"
+                                onClick={() => toggleLockDuty(item.title)}
+                                className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded border transition ${
+                                  item.isLocked
+                                    ? 'bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200 shadow-sm'
+                                    : 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200'
+                                }`}
+                                title={
+                                  item.isLocked
+                                    ? 'Click to unlock this duty for the employee'
+                                    : 'Click to lock this duty and its weight as mandatory for the employee'
+                                }
+                              >
+                                {item.isLocked ? (
+                                  <>
+                                    <Lock className="w-3 h-3 text-amber-700" />
+                                    <span>Mandatory (Locked)</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Unlock className="w-3 h-3 text-slate-400" />
+                                    <span>Lock as Mandatory</span>
+                                  </>
+                                )}
+                              </button>
+                            )}
+                            {!canSupervisorEdit && item.isLocked && (
+                              <span
+                                className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200"
+                                title="Locked by supervisor as mandatory (cannot be removed or weight changed)"
+                              >
+                                <Lock className="w-3 h-3 text-amber-600" />
+                                <span>Mandatory</span>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        {!isWeightDisabled ? (
+                          <input
+                            type="number"
+                            min={1}
+                            max={20}
+                            value={item.weight}
+                            onChange={(e) => handleWeightChange(item.title, parseInt(e.target.value) || 0)}
+                            className="w-16 text-center border border-slate-300 rounded px-1.5 py-1 text-xs font-semibold focus:ring-1 focus:ring-blue-500"
+                          />
+                        ) : (
+                          <div
+                            className="inline-block cursor-not-allowed"
+                            title={weightDisabledReason || undefined}
+                          >
+                            <span className="font-bold text-slate-800 px-2 py-1 bg-slate-100 rounded border border-slate-200 text-xs">
+                              {item.weight}
+                            </span>
+                          </div>
+                        )}
+                      </td>
+                      {/* Self Score */}
+                      <td className="py-3 px-3 text-center">
+                        {isPhase3SelfEditable ? (
+                          <input
+                            type="number"
+                            min={0}
+                            max={item.weight}
+                            value={item.scoreSelf ?? ''}
+                            placeholder={`0-${item.weight}`}
+                            onChange={(e) =>
+                              handleScoreChange(
+                                index,
+                                'RESPONSIBILITY',
+                                'scoreSelf',
+                                e.target.value
+                              )
+                            }
+                            className="w-16 text-center border border-slate-300 rounded px-1.5 py-1 text-xs font-semibold focus:ring-1 focus:ring-blue-500"
+                          />
+                        ) : (
+                          <div
+                            className="inline-block cursor-not-allowed"
+                            title={selfScoreDisabledReason || undefined}
+                          >
+                            <span className="font-semibold text-slate-500 px-2 py-1 bg-slate-100 rounded text-xs">
+                              {item.scoreSelf !== null && item.scoreSelf !== undefined ? item.scoreSelf : '--'}
+                            </span>
+                          </div>
+                        )}
+                      </td>
+                      {/* Supervisor Score */}
+                      <td className="py-3 px-3 text-center">
+                        {isPhase3SupervisorEditable ? (
+                          <input
+                            type="number"
+                            min={0}
+                            max={item.weight}
+                            value={item.scoreSupervisor ?? ''}
+                            placeholder={`0-${item.weight}`}
+                            onChange={(e) =>
+                              handleScoreChange(
+                                index,
+                                'RESPONSIBILITY',
+                                'scoreSupervisor',
+                                e.target.value
+                              )
+                            }
+                            className="w-16 text-center border border-slate-300 rounded px-1.5 py-1 text-xs font-semibold focus:ring-1 focus:ring-blue-500"
+                          />
+                        ) : (
+                          <div
+                            className="inline-block cursor-not-allowed"
+                            title={supervisorScoreDisabledReason || undefined}
+                          >
+                            <span className="font-semibold text-slate-500 px-2 py-1 bg-slate-100 rounded text-xs">
+                              {item.scoreSupervisor !== null && item.scoreSupervisor !== undefined ? item.scoreSupervisor : '--'}
+                            </span>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
             <tfoot>
@@ -648,13 +778,27 @@ export default function EvaluationForm({
                 <th className="py-3 px-3 w-24 text-center">Score (Max 5)</th>
                 <th className="py-3 px-3 w-24 text-center">Self Score</th>
                 <th className="py-3 px-3 w-28 text-center">Supervisor Score</th>
-                <th className="py-3 px-3 w-28 text-center">Rubrics Guide</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {skillItems.map((skill: any, index: number) => {
-                const rubric = SKILL_RUBRICS.find((r) => r.name.toLowerCase().includes(skill.title.toLowerCase()));
-                const isExpanded = expandedRubric === skill.title;
+                const selfScoreDisabledReason = !isPhase3Active
+                  ? 'Phase 3 is not active. Self-evaluation scores can only be entered during Phase 3.'
+                  : !canEmployeeEdit
+                  ? 'Self-evaluation scores can only be entered by the employee.'
+                  : isSelfEvaluationSubmitted
+                  ? 'Self-evaluation scores have already been submitted and locked.'
+                  : null;
+
+                const supervisorScoreDisabledReason = !isPhase3Active
+                  ? 'Phase 3 is not active. Supervisor scores can only be entered during Phase 3.'
+                  : !canSupervisorEdit
+                  ? 'Only the supervisor can enter official evaluation scores.'
+                  : !isSelfEvaluationSubmitted && !isAdmin
+                  ? 'Awaiting employee self-evaluation submission before supervisor scoring opens.'
+                  : isFinalCompleted
+                  ? 'Evaluation has been completed and locked.'
+                  : null;
 
                 return (
                   <tr key={skill.id || index} className="hover:bg-slate-50/70">
@@ -681,12 +825,17 @@ export default function EvaluationForm({
                               e.target.value
                             )
                           }
-                          className="w-16 text-center border border-slate-300 rounded px-1.5 py-1 text-xs font-semibold"
+                          className="w-16 text-center border border-slate-300 rounded px-1.5 py-1 text-xs font-semibold focus:ring-1 focus:ring-blue-500"
                         />
                       ) : (
-                        <span className="font-semibold text-slate-700">
-                          {skill.scoreSelf ?? '--'}
-                        </span>
+                        <div
+                          className="inline-block cursor-not-allowed"
+                          title={selfScoreDisabledReason || undefined}
+                        >
+                          <span className="font-semibold text-slate-500 px-2 py-1 bg-slate-100 rounded text-xs">
+                            {skill.scoreSelf ?? '--'}
+                          </span>
+                        </div>
                       )}
                     </td>
                     {/* Supervisor Score */}
@@ -706,23 +855,18 @@ export default function EvaluationForm({
                               e.target.value
                             )
                           }
-                          className="w-16 text-center border border-slate-300 rounded px-1.5 py-1 text-xs font-semibold"
+                          className="w-16 text-center border border-slate-300 rounded px-1.5 py-1 text-xs font-semibold focus:ring-1 focus:ring-blue-500"
                         />
                       ) : (
-                        <span className="font-semibold text-slate-700">
-                          {skill.scoreSupervisor ?? '--'}
-                        </span>
+                        <div
+                          className="inline-block cursor-not-allowed"
+                          title={supervisorScoreDisabledReason || undefined}
+                        >
+                          <span className="font-semibold text-slate-500 px-2 py-1 bg-slate-100 rounded text-xs">
+                            {skill.scoreSupervisor ?? '--'}
+                          </span>
+                        </div>
                       )}
-                    </td>
-                    <td className="py-3 px-3 text-center">
-                      <button
-                        type="button"
-                        onClick={() => setExpandedRubric(isExpanded ? null : skill.title)}
-                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-900 hover:text-blue-700"
-                      >
-                        <HelpCircle className="w-3.5 h-3.5" />
-                        <span>{isExpanded ? 'Hide' : 'Rubrics'}</span>
-                      </button>
                     </td>
                   </tr>
                 );
@@ -736,7 +880,6 @@ export default function EvaluationForm({
                 <td className="py-3 px-3 text-center font-mono text-sm text-blue-900">
                   {totalPartBSupervisor}
                 </td>
-                <td />
               </tr>
             </tfoot>
           </table>
@@ -814,8 +957,18 @@ export default function EvaluationForm({
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-3 bg-slate-50 p-4 rounded-lg border border-slate-200">
-            <div className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-              Comments by Employee
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                Comments by Employee
+              </div>
+              {!isDevEmployeeEditable && (
+                <span
+                  className="text-[11px] text-slate-500 font-normal italic cursor-help"
+                  title="Editable only by the employee"
+                >
+                  (Editable by Employee)
+                </span>
+              )}
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1">
@@ -827,7 +980,8 @@ export default function EvaluationForm({
                 value={devRequestEmployee}
                 onChange={(e) => setDevRequestEmployee(e.target.value)}
                 placeholder="Specific training, workshops, or skills you would like to develop..."
-                className="w-full text-xs border border-slate-300 rounded-md p-2 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100"
+                title={!isDevEmployeeEditable ? 'Editable only by the employee' : undefined}
+                className="w-full text-xs border border-slate-300 rounded-md p-2 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-500"
               />
             </div>
             <div>
@@ -840,14 +994,25 @@ export default function EvaluationForm({
                 value={otherCommentsEmployee}
                 onChange={(e) => setOtherCommentsEmployee(e.target.value)}
                 placeholder="Additional comments regarding support or resources needed..."
-                className="w-full text-xs border border-slate-300 rounded-md p-2 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100"
+                title={!isDevEmployeeEditable ? 'Editable only by the employee' : undefined}
+                className="w-full text-xs border border-slate-300 rounded-md p-2 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-500"
               />
             </div>
           </div>
 
           <div className="space-y-3 bg-slate-50 p-4 rounded-lg border border-slate-200">
-            <div className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-              Comments by Supervisor
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                Comments by Supervisor
+              </div>
+              {!isDevSupervisorEditable && (
+                <span
+                  className="text-[11px] text-slate-500 font-normal italic cursor-help"
+                  title="Editable only by the supervisor"
+                >
+                  (Editable by Supervisor)
+                </span>
+              )}
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1">
@@ -859,7 +1024,8 @@ export default function EvaluationForm({
                 value={devRequestSupervisor}
                 onChange={(e) => setDevRequestSupervisor(e.target.value)}
                 placeholder="Recommended courses, coaching, or institutional opportunities..."
-                className="w-full text-xs border border-slate-300 rounded-md p-2 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100"
+                title={!isDevSupervisorEditable ? 'Editable only by the supervisor or department leader' : undefined}
+                className="w-full text-xs border border-slate-300 rounded-md p-2 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-500"
               />
             </div>
             <div>
@@ -872,7 +1038,8 @@ export default function EvaluationForm({
                 value={otherCommentsSupervisor}
                 onChange={(e) => setOtherCommentsSupervisor(e.target.value)}
                 placeholder="Additional notes from supervisor..."
-                className="w-full text-xs border border-slate-300 rounded-md p-2 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100"
+                title={!isDevSupervisorEditable ? 'Editable only by the supervisor or department leader' : undefined}
+                className="w-full text-xs border border-slate-300 rounded-md p-2 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-500"
               />
             </div>
           </div>
@@ -881,7 +1048,7 @@ export default function EvaluationForm({
 
       {/* SECTION D: Goals */}
       <section className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
-        <div className="border-b border-slate-200 pb-3">
+        <div className="border-b border-slate-200 pb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="w-6 h-6 rounded-full bg-blue-900 text-white text-xs font-bold flex items-center justify-center">
               D
@@ -890,6 +1057,14 @@ export default function EvaluationForm({
               Goals (Identify manageable goals that aid successful delivery of responsibilities)
             </h2>
           </div>
+          {!isGoalsEditable && (
+            <span
+              className="text-[11px] text-slate-500 italic cursor-help"
+              title="Goals can only be drafted and modified during Phase 1"
+            >
+              (Editable during Phase 1)
+            </span>
+          )}
         </div>
 
         <div className="space-y-3">
@@ -908,7 +1083,8 @@ export default function EvaluationForm({
                   setGoals(updated);
                 }}
                 placeholder={`Goal ${g.goalIndex} description...`}
-                className="flex-1 text-xs border border-slate-300 rounded-md p-2 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100"
+                title={!isGoalsEditable ? 'Goals can only be drafted and modified during Phase 1' : undefined}
+                className="flex-1 text-xs border border-slate-300 rounded-md p-2 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-500"
               />
             </div>
           ))}
@@ -930,30 +1106,64 @@ export default function EvaluationForm({
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-              Comments entered by Employee:
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Comments entered by Employee:
+              </label>
+              {!isPhase2EmployeeEditable && (
+                <span
+                  className="text-[11px] text-slate-500 italic cursor-help"
+                  title={!isPhase2Active ? 'Mid-year review opens during Phase 2' : 'Editable only by the employee'}
+                >
+                  {!isPhase2Active ? '(Opens in Phase 2)' : '(Editable by Employee)'}
+                </span>
+              )}
+            </div>
             <textarea
               rows={4}
               disabled={!isPhase2EmployeeEditable}
               value={midYearEmployee}
               onChange={(e) => setMidYearEmployee(e.target.value)}
               placeholder="Reflections on goal progress achieved since start of year..."
-              className="w-full text-xs border border-slate-300 rounded-md p-2.5 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100"
+              title={
+                !isPhase2Active
+                  ? 'Mid-year review comments can only be entered during Phase 2.'
+                  : !canEmployeeEdit
+                  ? 'Editable only by the employee.'
+                  : undefined
+              }
+              className="w-full text-xs border border-slate-300 rounded-md p-2.5 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-500"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-              Comments entered by Supervisor:
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Comments entered by Supervisor:
+              </label>
+              {!isPhase2SupervisorEditable && (
+                <span
+                  className="text-[11px] text-slate-500 italic cursor-help"
+                  title={!isPhase2Active ? 'Mid-year review opens during Phase 2' : 'Editable only by the supervisor'}
+                >
+                  {!isPhase2Active ? '(Opens in Phase 2)' : '(Editable by Supervisor)'}
+                </span>
+              )}
+            </div>
             <textarea
               rows={4}
               disabled={!isPhase2SupervisorEditable}
               value={midYearSupervisor}
               onChange={(e) => setMidYearSupervisor(e.target.value)}
               placeholder="Constructive mid-year feedback and adjustments for second semester..."
-              className="w-full text-xs border border-slate-300 rounded-md p-2.5 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100"
+              title={
+                !isPhase2Active
+                  ? 'Mid-year review comments can only be entered during Phase 2.'
+                  : !canSupervisorEdit
+                  ? 'Editable only by the supervisor.'
+                  : undefined
+              }
+              className="w-full text-xs border border-slate-300 rounded-md p-2.5 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-500"
             />
           </div>
         </div>
@@ -974,30 +1184,94 @@ export default function EvaluationForm({
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-              Comments entered by Employee:
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Comments entered by Employee:
+              </label>
+              {!isPhase3SelfEditable && (
+                <span
+                  className="text-[11px] text-slate-500 italic cursor-help"
+                  title={
+                    !isPhase3Active
+                      ? 'End-of-year review opens during Phase 3'
+                      : isSelfEvaluationSubmitted
+                      ? 'Self-evaluation comments submitted and locked'
+                      : 'Editable only by the employee'
+                  }
+                >
+                  {!isPhase3Active
+                    ? '(Opens in Phase 3)'
+                    : isSelfEvaluationSubmitted
+                    ? '(Submitted & Locked)'
+                    : '(Editable by Employee)'}
+                </span>
+              )}
+            </div>
             <textarea
               rows={4}
               disabled={!isPhase3SelfEditable}
               value={finalCommentsEmployee}
               onChange={(e) => setFinalCommentsEmployee(e.target.value)}
               placeholder="Summary of annual achievements, highlights, and growth..."
-              className="w-full text-xs border border-slate-300 rounded-md p-2.5 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100"
+              title={
+                !isPhase3Active
+                  ? 'End-of-year review comments can only be entered during Phase 3.'
+                  : isSelfEvaluationSubmitted
+                  ? 'Self-evaluation has already been submitted and locked.'
+                  : !canEmployeeEdit
+                  ? 'Editable only by the employee.'
+                  : undefined
+              }
+              className="w-full text-xs border border-slate-300 rounded-md p-2.5 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-500"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-              Comments entered by Supervisor:
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Comments entered by Supervisor:
+              </label>
+              {!isPhase3SupervisorEditable && (
+                <span
+                  className="text-[11px] text-slate-500 italic cursor-help"
+                  title={
+                    !isPhase3Active
+                      ? 'End-of-year review opens during Phase 3'
+                      : !isSelfEvaluationSubmitted && !isAdmin
+                      ? 'Awaiting employee self-evaluation submission before supervisor review'
+                      : isFinalCompleted
+                      ? 'Final evaluation completed and locked'
+                      : 'Editable only by the supervisor'
+                  }
+                >
+                  {!isPhase3Active
+                    ? '(Opens in Phase 3)'
+                    : !isSelfEvaluationSubmitted && !isAdmin
+                    ? '(Awaiting Employee Self-Eval)'
+                    : isFinalCompleted
+                    ? '(Final Review Completed)'
+                    : '(Editable by Supervisor)'}
+                </span>
+              )}
+            </div>
             <textarea
               rows={4}
               disabled={!isPhase3SupervisorEditable}
               value={finalCommentsSupervisor}
               onChange={(e) => setFinalCommentsSupervisor(e.target.value)}
               placeholder="Comprehensive summary of employee performance and leadership observations..."
-              className="w-full text-xs border border-slate-300 rounded-md p-2.5 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100"
+              title={
+                !isPhase3Active
+                  ? 'End-of-year review comments can only be entered during Phase 3.'
+                  : !isSelfEvaluationSubmitted && !isAdmin
+                  ? 'Awaiting employee self-evaluation submission before supervisor review.'
+                  : isFinalCompleted
+                  ? 'Final evaluation has been completed and locked.'
+                  : !canSupervisorEdit
+                  ? 'Editable only by the supervisor.'
+                  : undefined
+              }
+              className="w-full text-xs border border-slate-300 rounded-md p-2.5 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-500"
             />
           </div>
         </div>
@@ -1033,7 +1307,7 @@ export default function EvaluationForm({
 
           <div className="flex items-center gap-2">
             {/* Phase 1 Save / Submit */}
-            {isPhase1Editable && (
+            {isPhase1Active && canSupervisorEdit && (
               <>
                 <button
                   type="button"
@@ -1049,13 +1323,20 @@ export default function EvaluationForm({
                   disabled={isSaving || !isWeightValid || !isCountValid}
                   onClick={() => handleSavePhase1(true)}
                   className="px-4 py-2 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 rounded-lg shadow transition disabled:opacity-50"
+                  title={
+                    !isCountValid
+                      ? 'Please select between 4 and 8 responsibilities before submitting'
+                      : !isWeightValid
+                      ? 'Total weight must strictly equal 80 before submitting'
+                      : undefined
+                  }
                 >
                   <Send className="w-3.5 h-3.5 inline mr-1" />
                   <span>Submit Phase 1</span>
                 </button>
               </>
             )}
-            {canEmployeeEdit && isPhase1Active && !canSupervisorEdit && (
+            {isPhase1Active && canEmployeeEdit && !canSupervisorEdit && (
               <button
                 type="button"
                 disabled={isSaving}
@@ -1063,7 +1344,7 @@ export default function EvaluationForm({
                 className="px-4 py-2 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 rounded-lg shadow transition disabled:opacity-50"
               >
                 <Save className="w-3.5 h-3.5 inline mr-1" />
-                <span>Save Goals & Comments</span>
+                <span>Save Draft (Responsibilities & Goals)</span>
               </button>
             )}
 
@@ -1146,7 +1427,7 @@ export default function EvaluationForm({
               className="px-4 py-2 text-xs font-semibold text-slate-800 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg shadow-sm transition"
             >
               <Download className="w-3.5 h-3.5 inline mr-1" />
-              <span>Download PDF</span>
+              <span>Download PDF version</span>
             </a>
           </div>
         </div>

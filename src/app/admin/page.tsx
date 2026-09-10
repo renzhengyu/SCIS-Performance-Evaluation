@@ -1,5 +1,4 @@
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { getEffectiveSessionUser } from '@/lib/impersonate-actions';
 import { redirect } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import Link from 'next/link';
@@ -14,10 +13,10 @@ import {
 } from 'lucide-react';
 
 export default async function AdminHubPage() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) redirect('/auth/signin');
+  const effectiveSession = await getEffectiveSessionUser();
+  if (!effectiveSession?.user?.email) redirect('/auth/signin');
 
-  const userRole = (session.user as any).role;
+  const userRole = effectiveSession.user.role;
   if (userRole !== 'SUPER_ADMIN' && userRole !== 'HR_ADMIN') {
     redirect('/dashboard');
   }
@@ -62,7 +61,10 @@ export default async function AdminHubPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
-      <Navbar />
+      <Navbar
+        effectiveRole={userRole}
+        effectiveName={effectiveSession.staffProfile?.fullName || effectiveSession.user.name}
+      />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">

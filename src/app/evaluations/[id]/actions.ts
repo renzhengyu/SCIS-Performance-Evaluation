@@ -15,7 +15,7 @@ import { getEffectiveSessionUser } from '@/lib/impersonate-actions';
 export async function savePhase1Action(
   evaluationId: string,
   payload: {
-    responsibilities: { title: string; weight: number }[];
+    responsibilities: { title: string; weight: number; isLocked?: boolean }[];
     goals: { goalIndex: number; description: string }[];
     devRequestEmployee?: string;
     devRequestSupervisor?: string;
@@ -81,20 +81,70 @@ export async function savePhase1Action(
     }
   }
 
-  // Only supervisor or admin can update responsibilities
-  if ((isSupervisor || isDeptHead || isAdmin) && responsibilities.length > 0) {
+  // Update responsibilities: allowed for employee, supervisor, dept head, and admin during Phase 1
+  const canEditResponsibilities = isStaff || isSupervisor || isDeptHead || isAdmin;
+  if (canEditResponsibilities && responsibilities.length > 0) {
+    const existingItems = await prisma.evaluationItem.findMany({
+      where: { evaluationId, itemType: ItemType.RESPONSIBILITY },
+    });
+
+    const lockedMap = new Map<string, number>();
+    const scoreMap = new Map<string, { scoreSelf: number | null; scoreSupervisor: number | null }>();
+    for (const item of existingItems) {
+      if (item.isLocked) {
+        lockedMap.set(item.title, item.weight);
+      }
+      scoreMap.set(item.title, {
+        scoreSelf: item.scoreSelf,
+        scoreSupervisor: item.scoreSupervisor,
+      });
+    }
+
+    const isSupervisorOrAdmin = isSupervisor || isDeptHead || isAdmin;
+
+    // If employee is editing, enforce that supervisor-locked items cannot be removed or altered in weight
+    if (!isSupervisorOrAdmin) {
+      for (const [lockedTitle, lockedWeight] of lockedMap.entries()) {
+        const found = responsibilities.find((r) => r.title === lockedTitle);
+        if (!found) {
+          throw new Error(`The responsibility "${lockedTitle}" is locked as mandatory by your supervisor and cannot be removed.`);
+        }
+        // Force the locked weight and lock status
+        found.weight = lockedWeight;
+        found.isLocked = true;
+      }
+    }
+
+    const finalResponsibilities = responsibilities.map((r) => {
+      const isLocked = isSupervisorOrAdmin
+        ? Boolean(r.isLocked)
+        : lockedMap.has(r.title);
+
+      return {
+        title: r.title,
+        weight: Number(r.weight) || 0,
+        isLocked,
+      };
+    });
+
     await prisma.evaluationItem.deleteMany({
       where: { evaluationId, itemType: ItemType.RESPONSIBILITY },
     });
 
     await prisma.evaluationItem.createMany({
-      data: responsibilities.map((r, idx) => ({
-        evaluationId,
-        itemType: ItemType.RESPONSIBILITY,
-        orderIndex: idx + 1,
-        title: r.title,
-        weight: r.weight,
-      })),
+      data: finalResponsibilities.map((r, idx) => {
+        const scores = scoreMap.get(r.title);
+        return {
+          evaluationId,
+          itemType: ItemType.RESPONSIBILITY,
+          orderIndex: idx + 1,
+          title: r.title,
+          weight: r.weight,
+          scoreSelf: scores?.scoreSelf ?? null,
+          scoreSupervisor: scores?.scoreSupervisor ?? null,
+          isLocked: r.isLocked,
+        };
+      }),
     });
   }
 
