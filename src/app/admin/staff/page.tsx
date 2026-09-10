@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db';
 import Navbar from '@/components/Navbar';
 import StaffDirectoryClient from './StaffDirectoryClient';
 import { Users } from 'lucide-react';
+import { DEFAULT_CAMPUSES, DEFAULT_DEPARTMENTS } from '@/lib/org-constants';
 
 export default async function StaffAdminPage() {
   const session = await getServerSession(authOptions);
@@ -36,8 +37,19 @@ export default async function StaffAdminPage() {
     email: s.email,
   }));
 
-  const { getOrgOptionsAction } = await import('./actions');
-  const { campuses, departments } = await getOrgOptionsAction();
+  const config = await prisma.systemConfig.findUnique({
+    where: { id: 'singleton' },
+  });
+
+  const campuses: string[] =
+    Array.isArray(config?.campusOptions) && (config.campusOptions as string[]).length > 0
+      ? (config.campusOptions as string[])
+      : DEFAULT_CAMPUSES;
+
+  const departments: string[] =
+    Array.isArray(config?.departmentOptions) && (config.departmentOptions as string[]).length > 0
+      ? (config.departmentOptions as string[])
+      : DEFAULT_DEPARTMENTS;
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">

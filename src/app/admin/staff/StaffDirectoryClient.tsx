@@ -11,6 +11,7 @@ import { Role } from '@prisma/client';
 import ImpersonateButton from '@/components/ImpersonateButton';
 import { useRouter } from 'next/navigation';
 import OrgOptionsModal from './OrgOptionsModal';
+import { DEFAULT_CAMPUSES, DEFAULT_DEPARTMENTS } from '@/lib/org-constants';
 
 interface StaffDirectoryClientProps {
   staffList: any[];
@@ -37,26 +38,10 @@ export default function StaffDirectoryClient({
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const [campuses, setCampuses] = useState<string[]>(
-    initialCampuses && initialCampuses.length > 0
-      ? initialCampuses
-      : ['Systemwide', 'Hongqiao Campus', 'Hongqiao ECE', 'Pudong Campus']
+    initialCampuses && initialCampuses.length > 0 ? initialCampuses : DEFAULT_CAMPUSES
   );
   const [departments, setDepartments] = useState<string[]>(
-    initialDepartments && initialDepartments.length > 0
-      ? initialDepartments
-      : [
-          'Technology and Innovation',
-          'Early Childhood Education (ECE)',
-          'Lower School / Primary',
-          'Upper School / Secondary',
-          'Student Support Services',
-          'Operations & Facilities',
-          'Human Resources',
-          'Finance & Business Office',
-          'Athletics & Activities',
-          'Admissions & Marketing',
-          'General Administration',
-        ]
+    initialDepartments && initialDepartments.length > 0 ? initialDepartments : DEFAULT_DEPARTMENTS
   );
 
   const handleOptionsUpdated = (newCampuses: string[], newDepts: string[]) => {
