@@ -1,10 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { saveJobDescriptionAction } from './actions';
-import { Plus, Trash2, Save, ArrowLeft, CheckCircle2, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Plus, Trash2, Save, ArrowLeft, CheckCircle2, ShieldCheck, AlertCircle, UploadCloud } from 'lucide-react';
 import Link from 'next/link';
+import JDUploadModal from './JDUploadModal';
+import { ParsedJobDescription } from '@/lib/jd-doc-parser';
 
 interface JDEditorClientProps {
   initialData?: any;
@@ -43,6 +45,42 @@ export default function JDEditorClient({
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [parseNotice, setParseNotice] = useState<string | null>(null);
+
+  const applyParsedData = (data: ParsedJobDescription) => {
+    if (data.title) setTitle(data.title);
+    if (data.reportsToJdId) {
+      setReportsToJdId(data.reportsToJdId);
+    }
+    if (data.positionSummary) setPositionSummary(data.positionSummary);
+    if (Array.isArray(data.responsibilities) && data.responsibilities.length > 0) {
+      setResponsibilities(data.responsibilities);
+    }
+    if (Array.isArray(data.skillsAttributes) && data.skillsAttributes.length > 0) {
+      setSkillsAttributes(data.skillsAttributes);
+    }
+    if (Array.isArray(data.qualifications) && data.qualifications.length > 0) {
+      setQualifications(data.qualifications);
+    }
+    setParseNotice(
+      `Document parsed successfully! Extracted title, position summary, responsibilities, skills, and qualifications. Please review below and save.`
+    );
+  };
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const stored = sessionStorage.getItem('pendingParsedJd');
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          applyParsedData(parsed);
+          sessionStorage.removeItem('pendingParsedJd');
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    }
+  }, []);
 
   const handleListChange = (
     setter: React.Dispatch<React.SetStateAction<string[]>>,
@@ -110,7 +148,7 @@ export default function JDEditorClient({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
           href="/admin/jds"
           className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600 hover:text-slate-900"
@@ -119,15 +157,35 @@ export default function JDEditorClient({
           <span>Back to JD Catalog</span>
         </Link>
 
-        <button
-          type="submit"
-          disabled={isSaving}
-          className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 rounded-lg shadow transition disabled:opacity-50 cursor-pointer"
-        >
-          <Save className="w-4 h-4" />
-          <span>{isSaving ? 'Saving...' : 'Save Job Description'}</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <JDUploadModal onParsed={applyParsedData} />
+
+          <button
+            type="submit"
+            disabled={isSaving}
+            className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 rounded-lg shadow transition disabled:opacity-50 cursor-pointer"
+          >
+            <Save className="w-4 h-4" />
+            <span>{isSaving ? 'Saving...' : 'Save Job Description'}</span>
+          </button>
+        </div>
       </div>
+
+      {parseNotice && (
+        <div className="bg-blue-50 border border-blue-200 text-blue-900 px-4 py-3 rounded-xl text-xs font-medium flex items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className="w-4 h-4 text-blue-700 flex-shrink-0" />
+            <span>{parseNotice}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setParseNotice(null)}
+            className="text-blue-700 hover:text-blue-950 text-xs font-bold underline cursor-pointer"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {errorMessage && (
         <div className="bg-rose-50 border border-rose-300 text-rose-800 px-4 py-3 rounded-lg text-xs font-semibold flex items-center gap-2">

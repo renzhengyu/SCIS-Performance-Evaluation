@@ -6,6 +6,7 @@ import Navbar from '@/components/Navbar';
 import Link from 'next/link';
 import { FileText, Plus, Users, Calendar, ArrowRight } from 'lucide-react';
 import GlobalFooterEditorModal from './GlobalFooterEditorModal';
+import JDUploadModal from './JDUploadModal';
 
 export default async function JobDescriptionsAdminPage() {
   const session = await getServerSession(authOptions);
@@ -55,12 +56,13 @@ export default async function JobDescriptionsAdminPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <GlobalFooterEditorModal initialFooterText={globalFooterText} />
+            <JDUploadModal />
 
             <Link
               href="/admin/jds/new"
-              className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 rounded-lg shadow transition"
+              className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 rounded-lg shadow transition cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>Create New JD</span>

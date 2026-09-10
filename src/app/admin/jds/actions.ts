@@ -126,3 +126,56 @@ export async function updateStandardPolicyFooterAction(footerText: string) {
   revalidatePath('/admin/jds');
   return { success: true };
 }
+
+/**
+ * Upload and parse a Job Description from Word format (.docx / .doc)
+ */
+export async function parseJobDescriptionFileAction(formData: FormData) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) throw new Error('Unauthorized');
+
+  const userRole = (session.user as any).role;
+  if (userRole !== 'SUPER_ADMIN' && userRole !== 'HR_ADMIN') {
+    throw new Error('Forbidden: Super Admin or HR Admin required to upload Job Descriptions.');
+  }
+
+  const file = formData.get('file') as File | null;
+  if (!file || typeof file === 'string') {
+    throw new Error('No file was uploaded.');
+  }
+
+  const filename = file.name || 'document.docx';
+  const lowerName = filename.toLowerCase();
+  if (!lowerName.endsWith('.docx') && !lowerName.endsWith('.doc')) {
+    throw new Error('Invalid file format. Please upload a Word document (.docx or .doc).');
+  }
+
+  // Max 10MB limit
+  if (file.size > 10 * 1024 * 1024) {
+    throw new Error('File size exceeds the 10MB limit.');
+  }
+
+  const arrayBuffer = await file.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+
+  const { extractTextFromWordBuffer, parseJobDescriptionText } = await import('@/lib/jd-doc-parser');
+
+  const rawText = await extractTextFromWordBuffer(buffer, filename);
+  if (!rawText || rawText.trim().length === 0) {
+    throw new Error('The uploaded document is empty or could not be read.');
+  }
+
+  const existingJds = await prisma.jobDescription.findMany({
+    select: { id: true, title: true },
+    orderBy: { title: 'asc' },
+  });
+
+  const parsed = parseJobDescriptionText(rawText, existingJds);
+
+  return {
+    success: true,
+    data: parsed,
+    filename,
+  };
+}
+
