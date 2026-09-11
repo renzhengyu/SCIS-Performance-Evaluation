@@ -8,6 +8,9 @@ services:
       - .env
     environment:
       - PORT=3000
+      # Set to 'development' for verbose error messages during pre-rollout testing.
+      # Change back to 'production' before going live to all staff.
+      - NODE_ENV=development
     expose:
       - "3000"
 

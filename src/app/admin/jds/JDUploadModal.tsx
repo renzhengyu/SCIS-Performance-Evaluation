@@ -66,7 +66,6 @@ export default function JDUploadModal({ onParsed, triggerButton }: JDUploadModal
       const res = await parseJobDescriptionFileAction(formData);
 
       if (!res.success) {
-        // Server returned a structured error (never throws React #441)
         setError(res.error || 'Failed to parse document. Please check the file format.');
         return;
       }
@@ -81,13 +80,19 @@ export default function JDUploadModal({ onParsed, triggerButton }: JDUploadModal
             setSuccessInfo(null);
           }, 600);
         } else {
-          // If invoked from the catalog page, store in sessionStorage and redirect to /admin/jds/new
           sessionStorage.setItem('pendingParsedJd', JSON.stringify(res.data));
           router.push('/admin/jds/new');
         }
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to parse document. Please check the file format.');
+      // Build a verbose error message so admins can see the real cause during development
+      const parts: string[] = [];
+      if (err?.message) parts.push(err.message);
+      if (err?.digest) parts.push(`[digest: ${err.digest}]`);
+      if (err?.cause?.message) parts.push(`Caused by: ${err.cause.message}`);
+      const fullMsg = parts.join(' — ') || 'Failed to parse document. Please check the file format.';
+      setError(fullMsg);
+      console.error('[JDUploadModal] Server action error:', err);
     } finally {
       setIsLoading(false);
     }
