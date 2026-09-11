@@ -47,6 +47,17 @@ function htmlToStructuredText(html: string): string {
 /**
  * Extracts raw text from either .docx (via mammoth) or .doc (via word-extractor)
  */
+/**
+ * Strip null bytes and non-printable control characters that can corrupt
+ * JSON serialization or crash downstream processing.
+ */
+function sanitizeText(text: string): string {
+  return text
+    .replace(/\0/g, '')                    // null bytes
+    .replace(/[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]/g, ' ') // other control chars (keep \t \n \r)
+    .replace(/\uFFFD/g, '');              // unicode replacement char (encoding errors)
+}
+
 export async function extractTextFromWordBuffer(
   buffer: Buffer,
   filename: string
@@ -55,34 +66,60 @@ export async function extractTextFromWordBuffer(
     filename.toLowerCase().endsWith('.docx') ||
     (buffer.length > 4 && buffer[0] === 0x50 && buffer[1] === 0x4b); // PK zip header
 
+  // --- Try mammoth (best for .docx) ---
   if (isDocx) {
     try {
       const htmlResult = await mammoth.convertToHtml({ buffer });
       if (htmlResult.value && htmlResult.value.trim().length > 0) {
-        return htmlToStructuredText(htmlResult.value);
-      }
-      const rawResult = await mammoth.extractRawText({ buffer });
-      if (rawResult.value && rawResult.value.trim().length > 0) {
-        return rawResult.value;
+        return sanitizeText(htmlToStructuredText(htmlResult.value));
       }
     } catch {
-      // If mammoth fails on an ambiguous file, fallback to word-extractor
+      // mammoth failed on HTML conversion, try raw text
+    }
+
+    try {
+      const rawResult = await mammoth.extractRawText({ buffer });
+      if (rawResult.value && rawResult.value.trim().length > 0) {
+        return sanitizeText(rawResult.value);
+      }
+    } catch {
+      // mammoth can't read this DOCX at all
     }
   }
 
-  // Fallback or binary .doc
-  try {
-    const extractor = new WordExtractor();
-    const doc = await extractor.extract(buffer);
-    const body = doc.getBody();
-    if (body && body.trim().length > 0) {
-      return body;
+  // --- Try word-extractor for legacy .doc files (requires file path on Linux) ---
+  // word-extractor on Linux only works when given a file path, not a Buffer.
+  // We write a temp file if the file looks like a legacy binary .doc.
+  if (!isDocx) {
+    try {
+      const os = await import('os');
+      const path = await import('path');
+      const fs = await import('fs');
+      const tmpPath = path.join(os.tmpdir(), `jd_upload_${Date.now()}.doc`);
+      fs.writeFileSync(tmpPath, buffer);
+      try {
+        const extractor = new WordExtractor();
+        const doc = await extractor.extract(tmpPath);
+        const body = doc.getBody();
+        if (body && body.trim().length > 0) {
+          return sanitizeText(body);
+        }
+      } finally {
+        try { fs.unlinkSync(tmpPath); } catch { /* ignore cleanup errors */ }
+      }
+    } catch (err: any) {
+      throw new Error(
+        `Failed to extract text from the legacy .doc file: ${err.message || 'Unknown error'}. ` +
+        `Please save the document as .docx format and try again.`
+      );
     }
-  } catch (err: any) {
-    throw new Error(`Failed to extract text from document: ${err.message || 'Unknown error'}`);
   }
 
-  throw new Error('The uploaded document appears to be empty or unreadable.');
+  throw new Error(
+    'The uploaded document appears to be empty or could not be read. ' +
+    'Please make sure it is a valid Word document (.docx). ' +
+    'Password-protected or macro-only files are not supported.'
+  );
 }
 
 /**

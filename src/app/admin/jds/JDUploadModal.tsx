@@ -65,6 +65,12 @@ export default function JDUploadModal({ onParsed, triggerButton }: JDUploadModal
 
       const res = await parseJobDescriptionFileAction(formData);
 
+      if (!res.success) {
+        // Server returned a structured error (never throws React #441)
+        setError(res.error || 'Failed to parse document. Please check the file format.');
+        return;
+      }
+
       if (res.success && res.data) {
         setSuccessInfo(`Successfully parsed "${res.filename}"!`);
         if (onParsed) {

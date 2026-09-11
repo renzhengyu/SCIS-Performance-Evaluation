@@ -130,52 +130,82 @@ export async function updateStandardPolicyFooterAction(footerText: string) {
 /**
  * Upload and parse a Job Description from Word format (.docx / .doc)
  */
-export async function parseJobDescriptionFileAction(formData: FormData) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) throw new Error('Unauthorized');
+export async function parseJobDescriptionFileAction(formData: FormData): Promise<
+  { success: true; data: any; filename: string } |
+  { success: false; error: string }
+> {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.email) {
+      return { success: false, error: 'Unauthorized. Please sign in and try again.' };
+    }
 
-  const userRole = (session.user as any).role;
-  if (userRole !== 'SUPER_ADMIN' && userRole !== 'HR_ADMIN') {
-    throw new Error('Forbidden: Super Admin or HR Admin required to upload Job Descriptions.');
+    const userRole = (session.user as any).role;
+    if (userRole !== 'SUPER_ADMIN' && userRole !== 'HR_ADMIN') {
+      return { success: false, error: 'Forbidden: Super Admin or HR Admin role required.' };
+    }
+
+    const file = formData.get('file') as File | null;
+    if (!file || typeof file === 'string') {
+      return { success: false, error: 'No file was uploaded.' };
+    }
+
+    const filename = file.name || 'document.docx';
+    const lowerName = filename.toLowerCase();
+    if (!lowerName.endsWith('.docx') && !lowerName.endsWith('.doc')) {
+      return { success: false, error: 'Invalid file format. Please upload a Word document (.docx or .doc).' };
+    }
+
+    // Max 10MB limit
+    if (file.size > 10 * 1024 * 1024) {
+      return { success: false, error: 'File size exceeds the 10MB limit.' };
+    }
+
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    const { extractTextFromWordBuffer, parseJobDescriptionText } = await import('@/lib/jd-doc-parser');
+
+    let rawText: string;
+    try {
+      rawText = await extractTextFromWordBuffer(buffer, filename);
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to extract text from the document.' };
+    }
+
+    if (!rawText || rawText.trim().length === 0) {
+      return { success: false, error: 'The uploaded document is empty or could not be read.' };
+    }
+
+    const existingJds = await prisma.jobDescription.findMany({
+      select: { id: true, title: true },
+      orderBy: { title: 'asc' },
+    });
+
+    let parsed: any;
+    try {
+      parsed = parseJobDescriptionText(rawText, existingJds);
+    } catch (err: any) {
+      return { success: false, error: `Document parsed but structure could not be extracted: ${err.message}` };
+    }
+
+    // Ensure rawTextPreview is safe for JSON serialization
+    if (parsed && typeof parsed.rawTextPreview === 'string') {
+      parsed.rawTextPreview = parsed.rawTextPreview.slice(0, 1500);
+    }
+
+    return {
+      success: true,
+      data: parsed,
+      filename,
+    };
+  } catch (err: any) {
+    // Catch-all: return a user-friendly error rather than letting React surface #441
+    console.error('[parseJobDescriptionFileAction] Unexpected error:', err);
+    return {
+      success: false,
+      error: err.message || 'An unexpected error occurred while processing the document. Please try again.',
+    };
   }
-
-  const file = formData.get('file') as File | null;
-  if (!file || typeof file === 'string') {
-    throw new Error('No file was uploaded.');
-  }
-
-  const filename = file.name || 'document.docx';
-  const lowerName = filename.toLowerCase();
-  if (!lowerName.endsWith('.docx') && !lowerName.endsWith('.doc')) {
-    throw new Error('Invalid file format. Please upload a Word document (.docx or .doc).');
-  }
-
-  // Max 10MB limit
-  if (file.size > 10 * 1024 * 1024) {
-    throw new Error('File size exceeds the 10MB limit.');
-  }
-
-  const arrayBuffer = await file.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-
-  const { extractTextFromWordBuffer, parseJobDescriptionText } = await import('@/lib/jd-doc-parser');
-
-  const rawText = await extractTextFromWordBuffer(buffer, filename);
-  if (!rawText || rawText.trim().length === 0) {
-    throw new Error('The uploaded document is empty or could not be read.');
-  }
-
-  const existingJds = await prisma.jobDescription.findMany({
-    select: { id: true, title: true },
-    orderBy: { title: 'asc' },
-  });
-
-  const parsed = parseJobDescriptionText(rawText, existingJds);
-
-  return {
-    success: true,
-    data: parsed,
-    filename,
-  };
 }
 
