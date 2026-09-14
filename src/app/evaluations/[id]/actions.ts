@@ -155,19 +155,16 @@ export async function savePhase1Action(
     });
   }
 
-  // Update goals (either staff or supervisor/admin can update goals)
-  for (const g of goals) {
-    await prisma.evaluationGoal.upsert({
-      where: {
-        id: `${evaluationId}-g-${g.goalIndex}`,
-      },
-      update: { description: g.description },
-      create: {
-        id: `${evaluationId}-g-${g.goalIndex}`,
+  // Update goals — delete all existing goals for this evaluation and re-insert,
+  // ensuring we always have the latest values without duplicates.
+  await prisma.evaluationGoal.deleteMany({ where: { evaluationId } });
+  if (goals.length > 0) {
+    await prisma.evaluationGoal.createMany({
+      data: goals.map((g) => ({
         evaluationId,
         goalIndex: g.goalIndex,
         description: g.description,
-      },
+      })),
     });
   }
 
