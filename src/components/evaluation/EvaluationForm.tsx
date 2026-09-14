@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import {
   CheckCircle,
   AlertCircle,
@@ -53,7 +53,14 @@ export default function EvaluationForm({
   const [activeTab, setActiveTab] = useState<'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'ALL'>('ALL');
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const toastTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = React.useCallback((message: string, type: 'success' | 'error' = 'success') => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ message, type });
+    toastTimerRef.current = setTimeout(() => setToast(null), 4000);
+  }, []);
 
   // Form lock state (supervisor/dept head/admin can lock the form for the employee)
   const [isFormLocked, setIsFormLocked] = useState<boolean>(Boolean(evaluation.isFormLocked));
@@ -224,11 +231,11 @@ export default function EvaluationForm({
         const callerName = currentUser.fullName || currentUser.email;
         setLockedByName(callerName);
         setLockedAt(new Date().toISOString());
-        setSuccessMessage('Evaluation form has been locked for the employee.');
+        showToast('Evaluation form has been locked for the employee.');
       } else {
         setLockedByName(null);
         setLockedAt(null);
-        setSuccessMessage('Evaluation form has been unlocked.');
+        showToast('Evaluation form has been unlocked.');
       }
     } catch (err: any) {
       setErrorMessage(err.message || 'Error updating form lock status');
@@ -285,7 +292,6 @@ export default function EvaluationForm({
     try {
       setIsSaving(true);
       setErrorMessage(null);
-      setSuccessMessage(null);
 
       await savePhase1Action(evaluation.id, {
         responsibilities: selectedResponsibilities.map((r) => ({
@@ -301,10 +307,10 @@ export default function EvaluationForm({
         isSubmitting,
       });
 
-      setSuccessMessage(
+      showToast(
         isSubmitting
           ? 'Phase 1 goals and responsibilities successfully submitted!'
-          : 'Phase 1 draft saved successfully.'
+          : 'Draft saved successfully.'
       );
     } catch (err: any) {
       setErrorMessage(err.message || 'Error saving Phase 1');
@@ -317,7 +323,6 @@ export default function EvaluationForm({
     try {
       setIsSaving(true);
       setErrorMessage(null);
-      setSuccessMessage(null);
 
       await savePhase2Action(evaluation.id, {
         midYearCommentsEmployee: midYearEmployee,
@@ -325,10 +330,10 @@ export default function EvaluationForm({
         isSubmitting,
       });
 
-      setSuccessMessage(
+      showToast(
         isSubmitting
           ? 'Phase 2 mid-year review comments submitted!'
-          : 'Phase 2 draft saved successfully.'
+          : 'Draft saved successfully.'
       );
     } catch (err: any) {
       setErrorMessage(err.message || 'Error saving Phase 2');
@@ -341,7 +346,6 @@ export default function EvaluationForm({
     try {
       setIsSaving(true);
       setErrorMessage(null);
-      setSuccessMessage(null);
 
       const allScores = [
         ...selectedResponsibilities.map((r) => ({
@@ -372,12 +376,12 @@ export default function EvaluationForm({
         isFinalSupervisorSubmission: submissionType === 'supervisor',
       });
 
-      setSuccessMessage(
+      showToast(
         submissionType === 'supervisor'
           ? 'Final evaluation completed and submitted!'
           : submissionType === 'self'
           ? 'Self-evaluation scores submitted successfully!'
-          : 'Phase 3 scores saved.'
+          : 'Scores saved successfully.'
       );
     } catch (err: any) {
       setErrorMessage(err.message || 'Error saving Phase 3');
@@ -388,7 +392,30 @@ export default function EvaluationForm({
 
   return (
     <div className="space-y-6 pb-20">
-      {/* Notifications */}
+      {/* Fixed bottom-right toast — always visible regardless of scroll position */}
+      {toast && (
+        <div
+          className={`fixed bottom-6 right-6 z-[200] flex items-center gap-3 px-5 py-3.5 rounded-xl shadow-lg border text-sm font-semibold transition-all animate-in slide-in-from-bottom-4 duration-300 ${
+            toast.type === 'success'
+              ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+              : 'bg-rose-50 border-rose-300 text-rose-900'
+          }`}
+        >
+          {toast.type === 'success'
+            ? <CheckCircle className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+            : <AlertCircle className="w-5 h-5 text-rose-500 flex-shrink-0" />
+          }
+          <span>{toast.message}</span>
+          <button
+            onClick={() => setToast(null)}
+            className="ml-2 text-xs opacity-60 hover:opacity-100 font-bold"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Inline error banner (stays in-page for errors so users can read and act) */}
       {errorMessage && (
         <div className="bg-rose-50 border-l-4 border-rose-500 p-4 rounded-md flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -398,21 +425,6 @@ export default function EvaluationForm({
           <button
             onClick={() => setErrorMessage(null)}
             className="text-xs text-rose-500 hover:text-rose-700 font-semibold"
-          >
-            Dismiss
-          </button>
-        </div>
-      )}
-
-      {successMessage && (
-        <div className="bg-emerald-50 border-l-4 border-emerald-500 p-4 rounded-md flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <CheckCircle className="w-5 h-5 text-emerald-600 flex-shrink-0" />
-            <p className="text-sm text-emerald-800 font-medium">{successMessage}</p>
-          </div>
-          <button
-            onClick={() => setSuccessMessage(null)}
-            className="text-xs text-emerald-500 hover:text-emerald-700 font-semibold"
           >
             Dismiss
           </button>
