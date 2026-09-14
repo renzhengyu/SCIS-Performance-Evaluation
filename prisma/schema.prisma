@@ -200,8 +200,6 @@ model EvaluationGoal {
   description   String      @db.Text
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
-
-  @@unique([evaluationId, goalIndex])
 }
 
 model AuditLog {
