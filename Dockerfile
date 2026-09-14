@@ -53,6 +53,9 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
+# next.config.ts must be present at runtime — Next.js reads it at startup
+# for runtime settings like serverActions.bodySizeLimit
+COPY --from=builder /app/next.config.ts ./
 
 EXPOSE 3000
 
